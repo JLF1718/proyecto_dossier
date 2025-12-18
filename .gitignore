@@ -1,0 +1,56 @@
+# =========================
+# Datos / evidencia (NO subir)
+# =========================
+data/historico/
+data/contratistas/
+data/raw/
+data/processed/
+*.csv
+ctrl_dosieres_*.xlsx
+
+# =========================
+# Outputs (NO subir)
+# =========================
+output/
+*.html
+
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+ENV/
+build/
+dist/
+*.egg-info/
+
+# =========================
+# Jupyter
+# =========================
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# =========================
+# Excel temporales
+# =========================
+~$*.xlsx
+~$*.xls
+
+# =========================
+# IDE / SO
+# =========================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# =========================
+# Logs
+# =========================
+*.log
+logs/
