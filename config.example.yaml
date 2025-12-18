@@ -1,0 +1,59 @@
+paths:
+  input_file: data/contratistas/BAYSA/ctrl_dosieres_BAYSA_normalizado.csv
+  output_dir: output
+  cache_dir: output/.cache
+contratista:
+  nombre: BAYSA
+  titulo_dashboard: DASHBOARD DE CONTROL - DOSSIERES BAYSA
+excel:
+  sheet_ctrl: ctrl_dosieres
+  rev_nums_min: 1
+  rev_nums_max: 8
+colores:
+  LIBERADO: '#0F7C3F'
+  PLANEADO: '#808080'
+  OBSERVADO: '#D0021B'
+  EN_REVISIÓN: '#F5A623'
+  FONDO: '#FFFFFF'
+  TEXTO_PRINCIPAL: '#2C2C2C'
+  TEXTO_SECUNDARIO: '#6B6B6B'
+  GRID: '#E5E5E5'
+dashboard:
+  row_heights:
+  - 0.25
+  - 0.2
+  - 0.2
+  - 0.35
+  tipografia:
+    familia_principal: Segoe UI, Arial, sans-serif
+    titulo_dashboard: 24
+    subtitulos: 18
+    metricas_grandes: 28
+    etiquetas: 14
+    valores_graficos: 12
+    anotaciones: 11
+  column_widths:
+  - 0.5
+  - 0.5
+  vertical_spacing: 0.15
+  horizontal_spacing: 0.18
+  height: 2000
+  margin_left: 280
+  margin_right: 100
+  margin_top: 220
+  margin_bottom: 80
+  top_bloques: 15
+  in_review_statuses:
+  - OBSERVADO
+  - EN_REVISIÓN
+cache:
+  enabled: true
+  max_age_hours: 24
+export:
+  html: true
+  pdf: false
+  png: false
+  image:
+    width: 1920
+    height: 1800
+    scale: 2
