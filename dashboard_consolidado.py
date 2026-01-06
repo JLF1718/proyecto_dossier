@@ -9,6 +9,7 @@ Uso:
     python dashboard_consolidado.py
 """
 
+import os
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -18,8 +19,14 @@ from datetime import datetime
 import logging
 import sys
 
-# ========== CONFIGURACIÓN DE LOGGING ==========
+# ====== BLINDAJE UTF-8 (colócalo AQUÍ) ======
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
+# ========== CONFIGURACIÓN DE LOGGING ==========
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
@@ -47,7 +54,17 @@ def cargar_datos_consolidados() -> pd.DataFrame:
             continue
         
         try:
-            df = pd.read_csv(archivo, encoding='utf-8-sig')
+            # Intentar diferentes codificaciones
+            encodings = ['utf-8-sig', 'utf-8', 'latin-1', 'iso-8859-1', 'cp1252']
+            df = None
+            for enc in encodings:
+                try:
+                    df = pd.read_csv(archivo, encoding=enc)
+                    break
+                except UnicodeDecodeError:
+                    continue
+            if df is None:
+                raise ValueError("No se pudo leer el archivo CSV con ninguna codificación soportada")
             df['CONTRATISTA'] = contratista
             dfs.append(df)
             logger.info(f"✅ Cargado {archivo}: {len(df)} registros")
@@ -272,7 +289,7 @@ def generar_dashboard_consolidado(df: pd.DataFrame, config: dict) -> go.Figure:
     
     fig.update_layout(
         title={
-            'text': f"<b>DASHBOARD CONSOLIDADO - JAMAR & BAYSA</b><br><sub>{subtitulo}</sub>",
+            'text': f"<b>DASHBOARD CONSOLIDADO - JAMAR & BAYSA</b><br><span style='font-size:12px'>{subtitulo}</span>",
             'x': 0.5, 'xanchor': 'center',
             'font': {'size': tipo.get('titulo_dashboard', 28), 'family': font_family, 'color': texto_principal}
         },
@@ -283,7 +300,7 @@ def generar_dashboard_consolidado(df: pd.DataFrame, config: dict) -> go.Figure:
         paper_bgcolor=fondo_color,
         font=dict(family=font_family, size=tipo.get('etiquetas', 12), color=texto_principal),
         hovermode='closest',
-        margin=dict(l=100, r=100, t=180, b=100)
+        margin=dict(l=100, r=100, t=200, b=100)
     )
     
     # Actualizar ejes

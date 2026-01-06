@@ -381,7 +381,8 @@ def generar_dashboard(mej: pd.DataFrame, config: Dict) -> go.Figure:
     if not df_etapa_progress.empty:
         # Definir orden preferente de estatus
         prefer_order = ['LIBERADO', 'PLANEADO', 'OBSERVADO', 'EN_REVISIÓN']
-        estatus_presentes = sorted(df_etapa_progress['ESTATUS'].unique())
+        # Eliminar valores NaN antes de ordenar
+        estatus_presentes = sorted([s for s in df_etapa_progress['ESTATUS'].unique() if pd.notna(s)])
         estatus_order = [s for s in prefer_order if s in estatus_presentes] + [s for s in estatus_presentes if s not in prefer_order]
         
         # CANTIDAD por ETAPA y ESTATUS
@@ -631,7 +632,18 @@ Ejemplos:
         # Detectar tipo de archivo y cargar
         if input_file.suffix.lower() == '.csv':
             logger.info("📄 Detectado archivo CSV")
-            df_orig = pd.read_csv(input_file, encoding='utf-8-sig')
+            # Intentar diferentes codificaciones
+            encodings = ['utf-8-sig', 'utf-8', 'latin-1', 'iso-8859-1', 'cp1252']
+            df_orig = None
+            for enc in encodings:
+                try:
+                    df_orig = pd.read_csv(input_file, encoding=enc)
+                    logger.info(f"✅ Archivo CSV cargado con codificación: {enc}")
+                    break
+                except UnicodeDecodeError:
+                    continue
+            if df_orig is None:
+                raise ValueError("No se pudo leer el archivo CSV con ninguna codificación soportada")
         else:
             logger.info("📊 Detectado archivo Excel")
             df_orig = pd.read_excel(input_file, config['excel']['sheet_ctrl'])
@@ -720,8 +732,17 @@ Ejemplos:
         data_historico_dir.mkdir(parents=True, exist_ok=True)
         excel_historico = data_historico_dir / f"ctrl_dosieres_{semana}.xlsx"
         
-        # Leer CSV y guardar como Excel
-        df_backup = pd.read_csv(input_file)
+        # Leer CSV y guardar como Excel (usar el mismo método de múltiples codificaciones)
+        df_backup = None
+        encodings = ['utf-8-sig', 'utf-8', 'latin-1', 'iso-8859-1', 'cp1252']
+        for enc in encodings:
+            try:
+                df_backup = pd.read_csv(input_file, encoding=enc)
+                break
+            except UnicodeDecodeError:
+                continue
+        if df_backup is None:
+            raise ValueError("No se pudo leer el archivo CSV con ninguna codificación soportada")
         df_backup.to_excel(str(excel_historico), sheet_name="ctrl_dosieres", index=False, engine='openpyxl')
         logger.info(f"💾 Datos guardados en histórico: {excel_historico}")
         
