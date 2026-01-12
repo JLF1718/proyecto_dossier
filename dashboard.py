@@ -457,7 +457,7 @@ def generar_dashboard(mej: pd.DataFrame, config: Dict, semana_corte: str = "S186
     
     # Layout con diseño IBCS
     # Construir subtítulo con métricas clave
-    subtitulo_base = f"Semana: {semana_corte} | Total: {metricas['total_dossiers']} dossieres | Liberados: {metricas['dossiers_liberados']} ({metricas['pct_liberado']:.1f}%) | Peso Liberado: {metricas['peso_liberado']:,.2f} ({metricas['pct_peso_liberado']:.1f}%)"
+    subtitulo_base = f"<b style='color:#0F7C3F'>📅 SEMANA DE CORTE: {semana_corte}</b> | Total: {metricas['total_dossiers']} dossieres | Liberados: {metricas['dossiers_liberados']} ({metricas['pct_liberado']:.1f}%) | Peso Liberado: {metricas['peso_liberado']:,.2f} ({metricas['pct_peso_liberado']:.1f}%)"
     subtitulo_ejecucion = f" | ✓ Ejecución Real: {metricas['pct_ejecucion_real']:.1f}%"
     subtitulo_alerta = f" | ⚠️ {metricas['bloques_brecha_invalida']} bloques con ajustes pendientes" if metricas['bloques_brecha_invalida'] > 0 else ""
     
@@ -479,25 +479,9 @@ def generar_dashboard(mej: pd.DataFrame, config: Dict, semana_corte: str = "S186
         margin=dict(
             l=config['dashboard']['margin_left'],
             r=config['dashboard']['margin_right'],
-            t=340,
+            t=config['dashboard']['margin_top'],
             b=config['dashboard']['margin_bottom']
-        ),
-        annotations=[
-            # Nota destacada de semana de corte
-            dict(
-                text=f"<b>📅 SEMANA DE CORTE: {semana_corte}</b>",
-                xref="paper", yref="paper",
-                x=0.5, y=1.12,
-                xanchor="center", yanchor="middle",
-                showarrow=False,
-                font=dict(size=16, color="white", family=font_family, weight="bold"),
-                bgcolor="#0F7C3F",
-                bordercolor="#0D6633",
-                borderwidth=2,
-                borderpad=10,
-                opacity=0.95
-            )
-        ]
+        )
     )
     
     # Configurar ejes con estilo IBCS y tipografía mejorada

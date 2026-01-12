@@ -924,11 +924,11 @@ def generar_dashboard_consolidado(df: pd.DataFrame, config: dict, semana_corte: 
     ), row=3, col=2)
     
     # Layout
-    subtitulo = f"Semana: {semana_corte} | Total: {metricas['total_dossiers']} dossieres | Liberados: {metricas['dossiers_liberados']} ({metricas['pct_liberado']:.1f}%) | Peso: {metricas['peso_total']:,.0f} ton | Peso Liberado: {metricas['peso_liberado']:,.0f} ton ({metricas['pct_peso_liberado']:.1f}%)"
+    subtitulo = f"<b style='color:#0F7C3F'>📅 SEMANA DE CORTE: {semana_corte}</b> | Total: {metricas['total_dossiers']} dossieres | Liberados: {metricas['dossiers_liberados']} ({metricas['pct_liberado']:.1f}%) | Peso: {metricas['peso_total']:,.0f} ton | Peso Liberado: {metricas['peso_liberado']:,.0f} ton ({metricas['pct_peso_liberado']:.1f}%)"
     
     fig.update_layout(
         title={
-            'text': f"<b>DASHBOARD CONSOLIDADO - JAMAR & BAYSA</b><br><span style='font-size:12px'>{subtitulo}</span>",
+            'text': f"<b>DASHBOARD CONSOLIDADO - JAMAR & BAYSA</b><br><span style='font-size:14px'>{subtitulo}</span>",
             'x': 0.5, 'xanchor': 'center',
             'font': {'size': tipo.get('titulo_dashboard', 28), 'family': font_family, 'color': texto_principal}
         },
@@ -939,23 +939,7 @@ def generar_dashboard_consolidado(df: pd.DataFrame, config: dict, semana_corte: 
         paper_bgcolor=fondo_color,
         font=dict(family=font_family, size=tipo.get('etiquetas', 12), color=texto_principal),
         hovermode='closest',
-        margin=dict(l=100, r=100, t=260, b=100),
-        annotations=[
-            # Nota destacada de semana de corte
-            dict(
-                text=f"<b>📅 SEMANA DE CORTE: {semana_corte}</b>",
-                xref="paper", yref="paper",
-                x=0.5, y=1.16,
-                xanchor="center", yanchor="middle",
-                showarrow=False,
-                font=dict(size=18, color="white", family=font_family, weight="bold"),
-                bgcolor="#0F7C3F",
-                bordercolor="#0D6633",
-                borderwidth=2,
-                borderpad=12,
-                opacity=0.95
-            )
-        ]
+        margin=dict(l=100, r=100, t=200, b=100)
     )
     
     # Actualizar ejes
