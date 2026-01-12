@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Dashboard de Control de Dossieres BAYSA/INPROS - CLI
 ======================================================
@@ -21,6 +22,13 @@ import argparse
 import logging
 import sys
 import os
+
+# Configurar encoding UTF-8 para stdout/stderr
+if sys.platform == 'win32':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
@@ -30,6 +38,21 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import yaml
+
+# Importar funciones core de métricas (ÚNICA FUENTE DE VERDAD)
+from metricas_core import (
+    calcular_metricas_individuales,
+    validar_consistencia_metricas,
+    imprimir_metricas
+)
+
+# Importar utilidades comunes
+from utils_archivos import (
+    obtener_estructura_directorios,
+    crear_directorios,
+    solicitar_semana,
+    guardar_archivos_individuales
+)
 
 # ========== CONFIGURACIÓN DE LOGGING ==========
 
@@ -191,48 +214,19 @@ def preparar_bloques_revision(df: pd.DataFrame, top_n: int = 15,
     )
 
 def calcular_metricas_generales(df: pd.DataFrame) -> Dict:
-    """Calcula métricas generales del proyecto."""
-    total = len(df)
-    liberados = len(df[df['ESTATUS'] == 'LIBERADO'])
-    peso_total = df['PESO'].sum()
+    """
+    Calcula métricas generales del proyecto.
     
-    # Usar PESO_LIBERADO real del CSV (considera limitaciones de alcance)
-    df_liberados = df[df['ESTATUS'] == 'LIBERADO'].copy()
-    peso_liberado_real = df_liberados['PESO_LIBERADO'].fillna(0).sum()
-    peso_planificado_liberado = df_liberados['PESO'].sum()
-    
-    # Calcular % de ejecución real vs planificado
-    pct_ejecucion_real = (peso_liberado_real / peso_planificado_liberado * 100) if peso_planificado_liberado > 0 else 0
-    
-    # Validar brechas inválidas (PRO_* o SUE_* en etapas 1-2)
-    df_liberados['BRECHA'] = df_liberados['PESO'] - df_liberados['PESO_LIBERADO'].fillna(0)
-    # Vectorized cálculo de BRECHA_INVALIDA para evitar problemas con apply
-    if not df_liberados.empty:
-        bloque_str = df_liberados['BLOQUE'].fillna('').astype(str)
-        etapa_vals = df_liberados['ETAPA'].fillna('').astype(str)
-        cond_pro = bloque_str.str.startswith('PRO_')
-        cond_sue = bloque_str.str.startswith('SUE_') & etapa_vals.isin(['ETAPA_1', 'ETAPA_2'])
-        df_liberados['BRECHA_INVALIDA'] = ((cond_pro | cond_sue) & (df_liberados['BRECHA'].abs() > 0.01))
-    else:
-        df_liberados['BRECHA_INVALIDA'] = pd.Series([], dtype=bool)
-    bloques_con_brecha_invalida = df_liberados[df_liberados['BRECHA_INVALIDA']]
-    
-    return {
-        'total_dossiers': total,
-        'dossiers_liberados': liberados,
-        'pct_liberado': (liberados / total * 100) if total > 0 else 0,
-        'peso_total': peso_total,
-        'peso_liberado': peso_liberado_real,
-        'pct_peso_liberado': (peso_liberado_real / peso_total * 100) if peso_total > 0 else 0,
-        'pct_ejecucion_real': pct_ejecucion_real,
-        'bloques_brecha_invalida': len(bloques_con_brecha_invalida)
-    }
+    IMPORTANTE: Esta función ahora delega al módulo metricas_core.py
+    para asegurar consistencia con dashboard_consolidado.py
+    """
+    return calcular_metricas_individuales(df)
 
 def calcular_distribucion_estatus(df: pd.DataFrame) -> pd.DataFrame:
     """Calcula distribución por estatus."""
     return df.groupby('ESTATUS', dropna=False).agg(
         CANTIDAD=('ESTATUS', 'count'),
-        PESO=('PESO', 'sum')
+        PESO=('PESO', lambda x: x.sum() / 1000)  # Convertir kg a ton
     ).reset_index()
 
 def calcular_progreso_etapa(df: pd.DataFrame) -> pd.DataFrame:
@@ -245,7 +239,7 @@ def calcular_progreso_etapa(df: pd.DataFrame) -> pd.DataFrame:
         df.groupby(['ETAPA', 'ESTATUS'], dropna=False)
         .agg(
             CANTIDAD=('ESTATUS', 'count'),
-            PESO=('PESO', 'sum')
+            PESO=('PESO', lambda x: x.sum() / 1000)  # Convertir kg a ton
         )
         .reset_index()
     )
@@ -255,9 +249,9 @@ def calcular_progreso_etapa(df: pd.DataFrame) -> pd.DataFrame:
 # ========== GENERACIÓN DE GRÁFICOS ==========
 
 def crear_gauge(valor: float, titulo: str, color: str = '#0F7C3F', tipo_config: dict = None) -> go.Indicator:
-    """Crea un indicador tipo gauge con tipografía IBCS."""
+    """Crea un indicador tipo gauge con tipografía IBCS mejorada para pantalla."""
     if tipo_config is None:
-        tipo_config = {'subtitulos': 20, 'metricas_grandes': 28, 'familia_principal': 'Segoe UI, Arial, sans-serif'}
+        tipo_config = {'subtitulos': 22, 'metricas_grandes': 36, 'familia_principal': 'Segoe UI, Arial, sans-serif'}
     
     # Grises neutros para steps (IBCS estándar)
     steps_colors = ["#F5F5F5", "#E0E0E0", "#D3D3D3"]
@@ -265,9 +259,9 @@ def crear_gauge(valor: float, titulo: str, color: str = '#0F7C3F', tipo_config: 
     return go.Indicator(
         mode="gauge+number+delta",
         value=valor,
-        number={'suffix': "%", 'font': {'size': tipo_config.get('metricas_grandes', 28), 'color': color, 'family': tipo_config.get('familia_principal', 'Segoe UI')}},
-        delta={'reference': 90, 'increasing': {'color': color}, 'suffix': "% vs Meta"},
-        title={'text': f"<b>{titulo}</b><br><sub>Meta: 90%</sub>", 'font': {'size': tipo_config.get('subtitulos', 20), 'family': tipo_config.get('familia_principal', 'Segoe UI')}},
+        number={'suffix': "%", 'font': {'size': tipo_config.get('metricas_grandes', 36), 'color': color, 'family': tipo_config.get('familia_principal', 'Segoe UI'), 'weight': 'bold'}},
+        delta={'reference': 90, 'increasing': {'color': color}, 'suffix': "% vs Meta", 'font': {'size': 14}},
+        title={'text': f"<b style='font-size:{tipo_config.get('subtitulos', 22)}px'>{titulo}</b><br><span style='font-size:13px; color:#666;'>Meta: 90%</span>", 'font': {'size': tipo_config.get('subtitulos', 22), 'family': tipo_config.get('familia_principal', 'Segoe UI')}},
         gauge={
             'axis': {'range': [0, 100], 'ticksuffix': '%', 'tickfont': {'size': tipo_config.get('etiquetas', 14), 'family': tipo_config.get('familia_principal', 'Segoe UI')}},
             'bar': {'color': color, 'thickness': 0.75},
@@ -288,20 +282,20 @@ def crear_gauge(valor: float, titulo: str, color: str = '#0F7C3F', tipo_config: 
     )
 
 def crear_dona(labels: List, values: List, colores: List, hover_format: str = 'cantidad') -> go.Pie:
-    """Crea un gráfico de dona."""
-    hover_template = '<b>%{label}</b><br>Cantidad: %{value}<br>Porcentaje: %{percent}<extra></extra>' \
-        if hover_format == 'cantidad' else '<b>%{label}</b><br>Peso: %{value:,.0f}<br>Porcentaje: %{percent}<extra></extra>'
+    """Crea un gráfico de dona con tipografía mejorada para pantalla."""
+    hover_template = '<b style="font-size:14px">%{label}</b><br>Cantidad: %{value}<br>Porcentaje: %{percent}<extra></extra>' \
+        if hover_format == 'cantidad' else '<b style="font-size:14px">%{label}</b><br>Peso: %{value:,.0f}<br>Porcentaje: %{percent}<extra></extra>'
     
     return go.Pie(
         labels=labels, values=values, hole=0.4,
-        marker=dict(colors=colores),
+        marker=dict(colors=colores, line=dict(color='white', width=2)),
         textposition='inside', textinfo='percent',
-        textfont=dict(size=12, color='white'),
+        textfont=dict(size=16, color='white', family='Segoe UI, Arial, sans-serif', weight='bold'),
         hovertemplate=hover_template,
         showlegend=False, pull=[0.05, 0, 0, 0]
     )
 
-def generar_dashboard(mej: pd.DataFrame, config: Dict) -> go.Figure:
+def generar_dashboard(mej: pd.DataFrame, config: Dict, semana_corte: str = "S186") -> go.Figure:
     """Genera el dashboard completo."""
     
     # Configuración IBCS
@@ -369,11 +363,11 @@ def generar_dashboard(mej: pd.DataFrame, config: Dict) -> go.Figure:
         xref="paper", yref="paper", x=0.5, y=0.56,
         xanchor="center", yanchor="top", showarrow=False,
         font=dict(
-            size=tipo.get('anotaciones', 11), 
+            size=tipo.get('anotaciones', 14), 
             family=font_family,
-            color=config['colores'].get('TEXTO_SECUNDARIO', '#6B6B6B')
+            color=config['colores'].get('TEXTO_SECUNDARIO', '#2C2C2C')
         ),
-        bgcolor="rgba(255,255,255,0.9)", borderpad=6,
+        bgcolor="rgba(255,255,255,0.95)", borderpad=8,
         bordercolor=grid_color, borderwidth=1
     )
     
@@ -401,8 +395,8 @@ def generar_dashboard(mej: pd.DataFrame, config: Dict) -> go.Figure:
                 marker=dict(color=config['colores'].get(estatus, '#999999')),
                 text=df_est_agg['CANTIDAD'],
                 textposition='auto', 
-                textfont=dict(color='white', size=tipo.get('valores_graficos', 12), family=font_family),
-                hovertemplate='<b>%{y}</b><br>' + estatus + ': %{x}<extra></extra>',
+                textfont=dict(color='white', size=tipo.get('valores_graficos', 16), family=font_family, weight='bold'),
+                hovertemplate='<b style="font-size:14px">%{y}</b><br>' + estatus + ': %{x}<extra></extra>',
                 showlegend=False
             ), row=3, col=1)
         
@@ -422,8 +416,8 @@ def generar_dashboard(mej: pd.DataFrame, config: Dict) -> go.Figure:
                 marker=dict(color=config['colores'].get(estatus, '#999999')),
                 text=df_est_agg['PESO'].apply(lambda x: f'{x:,.0f}'),
                 textposition='auto', 
-                textfont=dict(color='white', size=tipo.get('valores_graficos', 12), family=font_family),
-                hovertemplate='<b>%{y}</b><br>' + estatus + ': %{x:,.0f}<extra></extra>',
+                textfont=dict(color='white', size=tipo.get('valores_graficos', 15), family=font_family, weight='bold'),
+                hovertemplate='<b style="font-size:14px">%{y}</b><br>' + estatus + ': %{x:,.0f}<extra></extra>',
                 showlegend=False
             ), row=3, col=2)
         
@@ -438,8 +432,8 @@ def generar_dashboard(mej: pd.DataFrame, config: Dict) -> go.Figure:
             text=leyenda_barras,
             xref="paper", yref="paper", x=0.5, y=0.32,
             xanchor="center", yanchor="top", showarrow=False,
-            font=dict(size=tipo.get('anotaciones', 11), family=font_family, color=texto_color),
-            bgcolor="rgba(255,255,255,0.9)", borderpad=6,
+            font=dict(size=tipo.get('anotaciones', 14), family=font_family, color='#2C2C2C'),
+            bgcolor="rgba(255,255,255,0.95)", borderpad=8,
             bordercolor=grid_color, borderwidth=1
         )
     
@@ -451,18 +445,19 @@ def generar_dashboard(mej: pd.DataFrame, config: Dict) -> go.Figure:
             orientation='h', marker=dict(color=bloques_en_revision['COLOR'].tolist()),
             text=[f'{rev} rev' for rev in bloques_en_revision['NO_REVISIONES_REALIZADAS'].astype(int)],
             textposition='auto', textfont=dict(
-                size=tipo.get('valores_graficos', 12), 
+                size=tipo.get('valores_graficos', 15), 
                 color='white', 
-                family=font_family
+                family=font_family,
+                weight='bold'
             ),
-            hovertemplate='<b>%{y}</b><br>Revisiones: %{x}<br>Estatus: %{customdata[0]}<br>Peso: %{customdata[1]:,.0f}<extra></extra>',
+            hovertemplate='<b style="font-size:14px">%{y}</b><br>Revisiones: %{x}<br>Estatus: %{customdata[0]}<br>Peso: %{customdata[1]:,.0f}<extra></extra>',
             customdata=list(zip(bloques_en_revision['ESTATUS'], bloques_en_revision['PESO'])),
             showlegend=False
         ), row=4, col=1)
     
     # Layout con diseño IBCS
     # Construir subtítulo con métricas clave
-    subtitulo_base = f"Total: {metricas['total_dossiers']} dossieres | Liberados: {metricas['dossiers_liberados']} ({metricas['pct_liberado']:.1f}%) | Peso Liberado: {metricas['peso_liberado']:,.2f} ({metricas['pct_peso_liberado']:.1f}%)"
+    subtitulo_base = f"Semana: {semana_corte} | Total: {metricas['total_dossiers']} dossieres | Liberados: {metricas['dossiers_liberados']} ({metricas['pct_liberado']:.1f}%) | Peso Liberado: {metricas['peso_liberado']:,.2f} ({metricas['pct_peso_liberado']:.1f}%)"
     subtitulo_ejecucion = f" | ✓ Ejecución Real: {metricas['pct_ejecucion_real']:.1f}%"
     subtitulo_alerta = f" | ⚠️ {metricas['bloques_brecha_invalida']} bloques con ajustes pendientes" if metricas['bloques_brecha_invalida'] > 0 else ""
     
@@ -471,45 +466,61 @@ def generar_dashboard(mej: pd.DataFrame, config: Dict) -> go.Figure:
     
     fig.update_layout(
         title={
-            'text': f"<b>{titulo_dashboard}</b><br><sub>{subtitulo_base}{subtitulo_ejecucion}{subtitulo_alerta}</sub>",
+            'text': f"<b>{titulo_dashboard}</b><br><span style='font-size:16px; font-weight:normal;'>{subtitulo_base}{subtitulo_ejecucion}{subtitulo_alerta}</span>",
             'x': 0.5, 'xanchor': 'center', 
-            'font': {'size': tipo.get('titulo_dashboard', 32), 'family': font_family, 'color': texto_principal}
+            'font': {'size': tipo.get('titulo_dashboard', 38), 'family': font_family, 'color': texto_principal, 'weight': 'bold'}
         },
         height=config['dashboard']['height'],
         showlegend=False, barmode='stack', hovermode='closest',
         dragmode='pan',  # Permite desplazar/mover gráficos en lugar de zoom
         plot_bgcolor=fondo_color,
         paper_bgcolor=fondo_color,
-        font=dict(family=font_family, size=tipo.get('etiquetas', 14), color=texto_principal),
+        font=dict(family=font_family, size=tipo.get('etiquetas', 16), color=texto_principal),
         margin=dict(
             l=config['dashboard']['margin_left'],
             r=config['dashboard']['margin_right'],
-            t=config['dashboard']['margin_top'],
+            t=340,
             b=config['dashboard']['margin_bottom']
-        )
+        ),
+        annotations=[
+            # Nota destacada de semana de corte
+            dict(
+                text=f"<b>📅 SEMANA DE CORTE: {semana_corte}</b>",
+                xref="paper", yref="paper",
+                x=0.5, y=1.12,
+                xanchor="center", yanchor="middle",
+                showarrow=False,
+                font=dict(size=16, color="white", family=font_family, weight="bold"),
+                bgcolor="#0F7C3F",
+                bordercolor="#0D6633",
+                borderwidth=2,
+                borderpad=10,
+                opacity=0.95
+            )
+        ]
     )
     
-    # Configurar ejes con estilo IBCS
+    # Configurar ejes con estilo IBCS y tipografía mejorada
     fig.update_xaxes(
         title_text="<b>Cantidad</b>", row=3, col=1, 
-        title_font=dict(size=tipo.get('subtitulos', 20), family=font_family, color=texto_principal), 
-        gridcolor=grid_color, tickfont=dict(color=texto_color, family=font_family)
+        title_font=dict(size=tipo.get('subtitulos', 22), family=font_family, color=texto_principal), 
+        gridcolor=grid_color, tickfont=dict(color=texto_color, family=font_family, size=14)
     )
     fig.update_xaxes(
         title_text="<b>Peso</b>", row=3, col=2, 
-        title_font=dict(size=tipo.get('subtitulos', 20), family=font_family, color=texto_principal), 
-        gridcolor=grid_color, tickfont=dict(color=texto_color, family=font_family)
+        title_font=dict(size=tipo.get('subtitulos', 22), family=font_family, color=texto_principal), 
+        gridcolor=grid_color, tickfont=dict(color=texto_color, family=font_family, size=14)
     )
     fig.update_xaxes(
         title_text="<b>Número de Revisiones</b>", row=4, col=1,
-        title_font=dict(size=tipo.get('etiquetas', 14), family=font_family, color=texto_principal), 
-        gridcolor=grid_color, tickfont=dict(color=texto_color, family=font_family),
+        title_font=dict(size=tipo.get('etiquetas', 18), family=font_family, color=texto_principal), 
+        gridcolor=grid_color, tickfont=dict(color=texto_color, family=font_family, size=14),
         dtick=1, tickmode='linear'
     )
     fig.update_yaxes(
         title_text="<b>Bloque / Dossier</b>", row=4, col=1,
-        title_font=dict(size=tipo.get('etiquetas', 14), family=font_family, color=texto_principal), 
-        tickfont=dict(size=10, family=font_family, color=texto_color),
+        title_font=dict(size=tipo.get('etiquetas', 18), family=font_family, color=texto_principal), 
+        tickfont=dict(size=13, family=font_family, color=texto_color),
         type='category', categoryorder='array',
         categoryarray=bloques_en_revision['BLOQUE_ID'].tolist() if len(bloques_en_revision) > 0 else [],
         gridcolor=grid_color
@@ -521,10 +532,10 @@ def generar_dashboard(mej: pd.DataFrame, config: Dict) -> go.Figure:
     fig.update_xaxes(showgrid=False, zeroline=False, row=4)
     fig.update_yaxes(showgrid=False, zeroline=False, row=4)
     
-    # Ajustar subtítulos con estilo IBCS
+    # Ajustar subtítulos con estilo IBCS y mejor legibilidad
     for i, annotation in enumerate(fig.layout.annotations):
         if i >= 2 and i <= 5:
-            annotation.font.size = tipo.get('subtitulos', 20)
+            annotation.font.size = tipo.get('subtitulos', 24)
             annotation.font.color = texto_principal
             annotation.font.family = font_family
     
@@ -664,93 +675,65 @@ Ejemplos:
         
         logger.info(f"✅ Datos procesados: {mej.shape[0]} registros")
     
+    # Capturar semana de corte (primero desde variable de entorno, luego solicitar)
+    semana_corte = os.getenv('SEMANA_CORTE') or os.getenv('SEMANA_PROYECTO')
+    if semana_corte:
+        semana = semana_corte.strip().upper()
+        logger.info(f"📌 Semana de corte: {semana}")
+    else:
+        # Solicitar semana de proyecto
+        semana = solicitar_semana(tipo='proyecto')
+    
     # Generar dashboard
     logger.info("🎨 Generando dashboard...")
-    fig, metricas, bloques = generar_dashboard(mej, config)
+    fig, metricas, bloques = generar_dashboard(mej, config, semana)
     
-    # Exportar
+    # Preparar estructura de directorios estandarizada
+    dirs = obtener_estructura_directorios(output_dir)
+    crear_directorios(dirs)
+    
+    # Obtener nombre de contratista
+    nombre_contratista = config.get('contratista', {}).get('nombre', 'dashboard')
+    fecha_str = datetime.now().strftime("%Y%m%d")
+    
+    # Exportar archivos
     archivos_generados = []
     
-    # Obtener nombre de contratista para el nombre del archivo
-    nombre_contratista = config.get('contratista', {}).get('nombre', 'dashboard')
-    
     if 'html' in args.export or config['export']['html']:
-        html_file = output_dir / f"dashboard_{nombre_contratista}_{timestamp}.html"
-        # Configuración para habilitar todos los controles de la barra de herramientas
-        fig.write_html(
-            str(html_file),
-            config={
-                'displayModeBar': True,
-                'modeBarButtonsToRemove': [],
-                'displaylogo': False,
-                'toImageButtonOptions': {
-                    'format': 'png',
-                    'filename': f'dashboard_{timestamp}',
-                    'height': 2000,
-                    'width': 1920,
-                    'scale': 2
-                }
-            }
+        # Leer datos para backup si es necesario
+        df_backup = None
+        if config['export'].get('excel', False):
+            encodings = ['utf-8-sig', 'utf-8', 'latin-1', 'iso-8859-1', 'cp1252']
+            for enc in encodings:
+                try:
+                    df_backup = pd.read_csv(input_file, encoding=enc)
+                    break
+                except UnicodeDecodeError:
+                    continue
+            if df_backup is None:
+                logger.warning("No se pudo leer el archivo CSV para backup Excel")
+        
+        # Guardar usando utilidad común
+        dashboard_actual, dashboard_historico = guardar_archivos_individuales(
+            fig_dashboard=fig,
+            contratista=nombre_contratista,
+            timestamp=timestamp,
+            semana=semana,
+            dirs=dirs,
+            config=config,
+            df_data=df_backup
         )
-        archivos_generados.append(html_file)
-        logger.info(f"✅ HTML generado: {html_file.name}")
         
-        # Guardar en histórico con estructura semanal
-        historico_dir = output_dir / "historico"
-        historico_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Solicitar semana al usuario (o usar variable de entorno)
-        semana = os.getenv('SEMANA_PROYECTO', input("📅 Ingresa el número de semana (ej: S178): ").strip())
-        fecha_str = datetime.now().strftime("%Y%m%d")
-        
-        semana_dir = historico_dir / f"{semana}_{fecha_str}"
-        semana_dir.mkdir(parents=True, exist_ok=True)
-        graficos_dir = semana_dir / "graficos"
-        graficos_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Copiar dashboard completo al histórico
-        dashboard_historico = semana_dir / f"dashboard_{semana}_{fecha_str}.html"
-        fig.write_html(
-            str(dashboard_historico),
-            config={
-                'displayModeBar': True,
-                'modeBarButtonsToRemove': [],
-                'displaylogo': False,
-                'toImageButtonOptions': {
-                    'format': 'png',
-                    'filename': f'dashboard_{semana}',
-                    'height': 2000,
-                    'width': 1920,
-                    'scale': 2
-                }
-            }
-        )
+        archivos_generados.append(dashboard_actual)
+        logger.info(f"✅ HTML generado: {dashboard_actual.name}")
         logger.info(f"📦 Dashboard guardado en histórico: {dashboard_historico.relative_to(output_dir)}")
         
-        # Guardar copia del CSV como Excel en histórico de datos
-        data_historico_dir = Path("data") / "historico"
-        data_historico_dir.mkdir(parents=True, exist_ok=True)
-        excel_historico = data_historico_dir / f"ctrl_dosieres_{semana}.xlsx"
-        
-        # Leer CSV y guardar como Excel (usar el mismo método de múltiples codificaciones)
-        df_backup = None
-        encodings = ['utf-8-sig', 'utf-8', 'latin-1', 'iso-8859-1', 'cp1252']
-        for enc in encodings:
-            try:
-                df_backup = pd.read_csv(input_file, encoding=enc)
-                break
-            except UnicodeDecodeError:
-                continue
-        if df_backup is None:
-            raise ValueError("No se pudo leer el archivo CSV con ninguna codificación soportada")
-        df_backup.to_excel(str(excel_historico), sheet_name="ctrl_dosieres", index=False, engine='openpyxl')
-        logger.info(f"💾 Datos guardados en histórico: {excel_historico}")
+        # Obtener directorios de gráficos
+        semana_dir = dashboard_historico.parent
+        graficos_dir = semana_dir / "graficos"
         
         # Exportar gráficos individuales
         logger.info("🎨 Exportando gráficos individuales...")
-        
-        # Extraer y guardar cada subplot como gráfico individual
-        from plotly.subplots import make_subplots
         
         # Gauge 1: % Dossiers Liberados
         gauge1 = go.Figure(fig.data[0])
@@ -769,7 +752,6 @@ Ejemplos:
         
         # Dona 2: Distribución por Peso
         dona2 = go.Figure(fig.data[3])
-        dona2.update_layout(title="Distribución por Peso", height=500, width=600)
         dona2.write_html(str(graficos_dir / "04_dona_peso.html"))
         
         # Barras ETAPA - Cantidad (Liberados + Pendientes)
@@ -848,15 +830,6 @@ Ejemplos:
             logger.error(f"❌ Error al generar PNG: {e}")
             logger.error("💡 Instala kaleido: pip install kaleido")
     
-    # Limpiar dashboards antiguos del output principal (mantener solo el último)
-    dashboards_antiguos = list(output_dir.glob(f"dashboard_{nombre_contratista}_*.html"))
-    if len(dashboards_antiguos) > 1:
-        # Ordenar por fecha de modificación y eliminar todos excepto el más reciente
-        dashboards_antiguos.sort(key=lambda x: x.stat().st_mtime, reverse=True)
-        for dashboard_viejo in dashboards_antiguos[1:]:
-            dashboard_viejo.unlink()
-            logger.info(f"🗑️  Dashboard antiguo eliminado: {dashboard_viejo.name}")
-    
     # Resumen final
     print("\n" + "="*70)
     print("✅ DASHBOARD GENERADO EXITOSAMENTE")
@@ -868,8 +841,13 @@ Ejemplos:
     print(f"   • Bloques en revisión: {len(bloques)}")
     
     print(f"\n📁 Archivos generados:")
-    for archivo in archivos_generados:
-        print(f"   • {archivo}")
+    print(f"   • Actual: dashboards/{dashboard_actual.name}")
+    print(f"   • Histórico: {dashboard_historico.relative_to(output_dir)}")
+    
+    print(f"\n📂 Estructura:")
+    print(f"   output/dashboards/        ← Dashboards actuales")
+    print(f"   output/historico/{nombre_contratista}/  ← Histórico por semana")
+    print(f"   data/historico/{nombre_contratista}/    ← Respaldos Excel")
     
     print("\n💡 Abre el archivo HTML en tu navegador para ver el dashboard interactivo")
     print("="*70 + "\n")

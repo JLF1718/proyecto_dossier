@@ -85,26 +85,30 @@ def generar_dashboard_contratista(
         env = os.environ.copy()
         env["PYTHONUTF8"] = "1"
         env["PYTHONIOENCODING"] = "utf-8"
+        env["PYTHONLEGACYWINDOWSSTDIO"] = "0"
+        env["SEMANA_CORTE"] = semana_corte  # Pasar semana como variable de entorno
 
-        proceso = subprocess.Popen(
+        # Ejecutar con subprocess.run que es más simple y robusto
+        resultado = subprocess.run(
             [sys.executable, "-X", "utf8", "dashboard.py", "--no-cache"],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             text=True,
             encoding="utf-8",
             errors="replace",
             env=env
         )
 
-        # Aquí vuelve el comportamiento: se envía la semana que el usuario capturó
-        stdout, stderr = proceso.communicate(input=f"{semana_corte}\n")
-
-        if proceso.returncode != 0:
+        if resultado.returncode != 0:
             print(f"❌ Error generando dashboard para {contratista}")
-            if stderr:
-                print(stderr)
+            if resultado.stderr:
+                # Mostrar solo las líneas de error relevantes, no warnings
+                for line in resultado.stderr.split('\n'):
+                    if 'Error' in line or 'Traceback' in line or 'File' in line:
+                        print(line)
             return False
+
+        print(f"✅ Dashboard generado para {contratista}")
+        return True
 
         print(f"✅ Dashboard generado para {contratista}")
         return True
@@ -163,6 +167,7 @@ def main() -> int:
         env = os.environ.copy()
         env["PYTHONUTF8"] = "1"
         env["PYTHONIOENCODING"] = "utf-8"
+        env["SEMANA_CORTE"] = semana_corte  # Pasar la semana al consolidado
 
         resultado_consolidado = subprocess.run(
             [sys.executable, "-X", "utf8", "dashboard_consolidado.py"],
