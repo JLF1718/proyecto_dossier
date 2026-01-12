@@ -155,6 +155,13 @@ def calcular_metricas_proceso(df: pd.DataFrame, baysa_cols: List[str], inpros_co
             ).sum(axis=1)
         )
         .assign(
+            # Si el estatus es PLANEADO, el nivel de revisión debe ser 0
+            NO_REVISIONES_REALIZADAS=lambda x: x.apply(
+                lambda row: 0 if row['ESTATUS'] == 'PLANEADO' else row['NO_REVISIONES_REALIZADAS'],
+                axis=1
+            )
+        )
+        .assign(
             TIEMPO_TOTAL_PROCESO_DIAS=lambda x: (
                 x['ULTIMA_RESPUESTA_INPROS_FECHA'] - x['PRIMERA_ENTREGA_BAYSA_FECHA']
             ).dt.days

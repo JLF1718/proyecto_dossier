@@ -711,13 +711,22 @@ def crear_gantt_entregas_baysa(df: pd.DataFrame, config: dict) -> go.Figure:
                     color = col_planeado
                     estatus = 'PLANEADO'
                 
+                # Obtener nivel de revisión (si no existe, usar 0)
+                nivel_revision = 0
+                if 'No. REVISIÓN' in row.index:
+                    try:
+                        nivel_revision = int(row['No. REVISIÓN']) if pd.notna(row['No. REVISIÓN']) else 0
+                    except:
+                        nivel_revision = 0
+                
                 gantt_data.append({
                     'Bloque': row['BLOQUE'],
                     'Fecha_Entrega': fecha_entrega,
                     'Estatus': estatus,
                     'Color': color,
                     'Peso': row['PESO'] / 1000,  # Convertir kg a ton
-                    'Semana': row['ENTREGA']
+                    'Semana': row['ENTREGA'],
+                    'Nivel_Revision': nivel_revision
                 })
         except:
             continue
@@ -733,16 +742,22 @@ def crear_gantt_entregas_baysa(df: pd.DataFrame, config: dict) -> go.Figure:
     fig = go.Figure()
     
     for idx, row in df_gantt.iterrows():
+        # Preparar texto para mostrar en la barra
+        if row['Nivel_Revision'] > 0:
+            texto_barra = f"{row['Semana']}<br>{row['Peso']:,.0f} ton<br>Rev: {row['Nivel_Revision']}"
+        else:
+            texto_barra = f"{row['Semana']}<br>{row['Peso']:,.0f} ton"
+        
         fig.add_trace(go.Bar(
             name=row['Estatus'],
             x=[row['Fecha_Entrega']],
             y=[row['Bloque']],
             orientation='h',
             marker=dict(color=row['Color'], line=dict(color='#2C2C2C', width=0.5)),
-            text=f"{row['Semana']}<br>{row['Peso']:,.0f} ton",
+            text=texto_barra,
             textposition='inside',
             textfont=dict(size=10, family=font_family, color='white'),
-            hovertemplate=f"<b>{row['Bloque']}</b><br>Entrega: {row['Semana']}<br>Fecha: {row['Fecha_Entrega'].strftime('%d/%m/%y')}<br>Peso: {row['Peso']:,.0f} ton<br>Estatus: {row['Estatus']}<extra></extra>",
+            hovertemplate=f"<b>{row['Bloque']}</b><br>Entrega: {row['Semana']}<br>Fecha: {row['Fecha_Entrega'].strftime('%d/%m/%y')}<br>Peso: {row['Peso']:,.0f} ton<br>Estatus: {row['Estatus']}<br>Revisión: {row['Nivel_Revision']}<extra></extra>",
             showlegend=False
         ))
     
