@@ -1082,12 +1082,35 @@ def main():
             font-size: 14px;
             margin-bottom: 30px;
         }}
+        .export-btn {{
+            background-color: #0F7C3F;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            margin: 20px auto;
+            display: block;
+            transition: background-color 0.3s;
+        }}
+        .export-btn:hover {{
+            background-color: #0D6633;
+        }}
+        @media print {{
+            .export-btn {{
+                display: none;
+            }}
+        }}
     </style>
 </head>
 <body>
     <div class="container">
         <h1>📊 Análisis Completo - BAYSA</h1>
         <div class="subtitle">Resumen, Plan de Entregas y Cronograma</div>
+        
+        <button class="export-btn" onclick="window.print()">💾 Exportar a PDF</button>
         
         <div class="section">
             {html_resumen}

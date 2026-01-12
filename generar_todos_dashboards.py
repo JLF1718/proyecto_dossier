@@ -46,14 +46,6 @@ def pedir_semana() -> str:
     Solicita la semana de corte al usuario en formato S###.
     Ejemplos válidos: S1, S12, S181, S1020
     """
-    # Permite automatizar por variable de entorno si lo deseas (opcional):
-    env_semana = os.getenv("SEMANA_CORTE")
-    if env_semana:
-        s = env_semana.strip().upper()
-        if re.fullmatch(r"S\d{1,4}", s):
-            print(f"📌 Semana de corte (desde SEMANA_CORTE): {s}")
-            return s
-
     while True:
         s = input("Semana de corte (formato S###, ej. S181): ").strip().upper()
         if re.fullmatch(r"S\d{1,4}", s):
@@ -127,8 +119,15 @@ def main() -> int:
     print("🚀 GENERADOR DE DASHBOARDS - MÚLTIPLES CONTRATISTAS")
     print("=" * 60)
 
-    # Semana de corte (una vez)
-    semana_corte = pedir_semana()
+    # Semana de corte (desde argumento, variable de entorno o input)
+    if len(sys.argv) > 1:
+        semana_corte = sys.argv[1].strip().upper()
+        if not re.fullmatch(r"S\d{1,4}", semana_corte):
+            print(f"❌ Formato inválido: {sys.argv[1]}. Usa, por ejemplo: S186")
+            return 1
+        print(f"📌 Semana de corte (desde argumento): {semana_corte}")
+    else:
+        semana_corte = pedir_semana()
 
     with open("config.yaml", "r", encoding="utf-8") as f:
         config_original = f.read()
