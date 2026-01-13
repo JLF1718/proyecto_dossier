@@ -1113,6 +1113,24 @@ def main():
         .export-btn:hover {{
             background-color: #0D6633;
         }}
+        .nota-observaciones {{
+            background-color: #FFF3E0;
+            border-left: 4px solid #FF9800;
+            padding: 15px 20px;
+            margin: 20px 0;
+            font-size: 14px;
+            line-height: 1.6;
+        }}
+        .nota-observaciones strong {{
+            color: #E65100;
+            display: block;
+            margin-bottom: 8px;
+            font-size: 15px;
+        }}
+        .nota-observaciones .categorias {{
+            color: #333;
+            font-weight: 600;
+        }}
         @media print {{
             .export-btn {{
                 display: none;
@@ -1129,6 +1147,11 @@ def main():
         
         <div class="section">
             {html_resumen}
+        </div>
+        
+        <div class="nota-observaciones">
+            <strong>⚠️ Nota Ejecutiva: Observaciones Críticas</strong>
+            Las observaciones identificadas en la columna <span class="categorias">OBSERVADO</span> se concentran principalmente en tres categorías críticas para la trazabilidad del dossier: <span class="categorias">TOPOGRAFÍA, PLANOS AS-BUILT</span> y <span class="categorias">PRODUCTO TERMINADO</span>. La ausencia de estas secciones compromete directamente la verificación de trazabilidad y cumplimiento normativo, representando un riesgo de no conformidad en auditorías y revisiones de calidad.
         </div>
         
         <div class="divider"></div>
