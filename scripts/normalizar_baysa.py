@@ -12,11 +12,28 @@ import pandas as pd
 from pathlib import Path
 import sys
 
+# Importar utilidades de backup
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from utils_backup import crear_backup_automatico, verificar_integridad_backup
+
 def normalizar_baysa():
     """Normaliza CSV de BAYSA."""
     
     archivo_entrada = Path("data/contratistas/BAYSA/ctrl_dosieres.csv")
     archivo_salida = Path("data/contratistas/BAYSA/ctrl_dosieres_BAYSA_normalizado.csv")
+    
+    # CRÍTICO: Crear backup antes de cualquier modificación
+    if archivo_salida.exists():
+        try:
+            backup_path = crear_backup_automatico(archivo_salida, mantener_ultimos=10)
+            print(f"🔒 Backup de seguridad creado: {backup_path.name}")
+            if not verificar_integridad_backup(archivo_salida, backup_path):
+                print("❌ ERROR: Backup no válido, abortando operación")
+                return False
+        except Exception as e:
+            print(f"❌ ERROR CRÍTICO: No se pudo crear backup: {e}")
+            print("   Operación cancelada por seguridad")
+            return False
     
     if not archivo_entrada.exists():
         print(f"❌ Archivo no encontrado: {archivo_entrada}")

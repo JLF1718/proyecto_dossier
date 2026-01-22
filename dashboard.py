@@ -144,27 +144,44 @@ def normalizar_fechas(df: pd.DataFrame, columnas_fecha: List[str]) -> pd.DataFra
 
 def calcular_metricas_proceso(df: pd.DataFrame, baysa_cols: List[str], inpros_cols: List[str]) -> pd.DataFrame:
     """Calcula métricas de proceso en un pipeline."""
+    # Verificar si existen las columnas de fechas
+    baysa_cols_exist = [c for c in baysa_cols if c in df.columns]
+    inpros_cols_exist = [c for c in inpros_cols if c in df.columns]
+    
+    # Si no hay columnas de fechas, solo calcular NO_REVISIONES_REALIZADAS basado en No. REVISIÓN
+    if not baysa_cols_exist and not inpros_cols_exist:
+        return df.assign(
+            NO_REVISIONES_REALIZADAS=lambda x: x.get('No. REVISIÓN', 0).fillna(0).astype(int)
+        ).assign(
+            # Si el estatus es PLANEADO, el nivel de revisión debe ser 0
+            NO_REVISIONES_REALIZADAS=lambda x: x.apply(
+                lambda row: 0 if row.get('ESTATUS') == 'PLANEADO' else row['NO_REVISIONES_REALIZADAS'],
+                axis=1
+            )
+        )
+    
+    # Si existen columnas de fechas, calcular métricas completas
     return (
         df.assign(
-            PRIMERA_ENTREGA_BAYSA_FECHA=lambda x: x[baysa_cols].min(axis=1),
-            ULTIMA_RESPUESTA_INPROS_FECHA=lambda x: x[inpros_cols].max(axis=1)
+            PRIMERA_ENTREGA_BAYSA_FECHA=lambda x: x[baysa_cols_exist].min(axis=1) if baysa_cols_exist else pd.NaT,
+            ULTIMA_RESPUESTA_INPROS_FECHA=lambda x: x[inpros_cols_exist].max(axis=1) if inpros_cols_exist else pd.NaT
         )
         .assign(
             NO_REVISIONES_REALIZADAS=lambda x: (
-                x[baysa_cols].notna() | x[inpros_cols].notna()
-            ).sum(axis=1)
+                x[baysa_cols_exist].notna() | x[inpros_cols_exist].notna()
+            ).sum(axis=1) if (baysa_cols_exist or inpros_cols_exist) else x.get('No. REVISIÓN', 0).fillna(0).astype(int)
         )
         .assign(
             # Si el estatus es PLANEADO, el nivel de revisión debe ser 0
             NO_REVISIONES_REALIZADAS=lambda x: x.apply(
-                lambda row: 0 if row['ESTATUS'] == 'PLANEADO' else row['NO_REVISIONES_REALIZADAS'],
+                lambda row: 0 if row.get('ESTATUS') == 'PLANEADO' else row['NO_REVISIONES_REALIZADAS'],
                 axis=1
             )
         )
         .assign(
             TIEMPO_TOTAL_PROCESO_DIAS=lambda x: (
                 x['ULTIMA_RESPUESTA_INPROS_FECHA'] - x['PRIMERA_ENTREGA_BAYSA_FECHA']
-            ).dt.days
+            ).dt.days if baysa_cols_exist and inpros_cols_exist else 0
         )
     )
 
@@ -329,17 +346,15 @@ def generar_dashboard(mej: pd.DataFrame, config: Dict, semana_corte: str = "S186
     
     # Crear estructura
     fig = make_subplots(
-        rows=4, cols=2,
-        row_heights=config['dashboard']['row_heights'],
+        rows=3, cols=2,
+        row_heights=[0.15, 0.35, 0.50],
         column_widths=config['dashboard']['column_widths'],
         subplot_titles=('', '', '<b>Distribución por Cantidad</b>', '<b>Distribución por Peso</b>',
-                       '<b>Dossieres por ETAPA</b>', '<b>Peso por ETAPA</b>',
-                       '<b>Bloques en Ciclo de Revisión (Top 15)</b>', ''),
+                       '<b>Dossieres por ETAPA</b>', '<b>Peso por ETAPA</b>'),
         specs=[
             [{'type': 'indicator'}, {'type': 'indicator'}],
             [{'type': 'pie'}, {'type': 'pie'}],
-            [{'type': 'bar'}, {'type': 'bar'}],
-            [{'type': 'bar', 'colspan': 2}, None]
+            [{'type': 'bar'}, {'type': 'bar'}]
         ],
         vertical_spacing=config['dashboard']['vertical_spacing'],
         horizontal_spacing=config['dashboard']['horizontal_spacing']
@@ -444,23 +459,23 @@ def generar_dashboard(mej: pd.DataFrame, config: Dict, semana_corte: str = "S186
             bordercolor=grid_color, borderwidth=1
         )
     
-    # Row 4: Bloques en revisión
-    if len(bloques_en_revision) > 0:
-        fig.add_trace(go.Bar(
-            y=bloques_en_revision['BLOQUE_ID'].tolist(),
-            x=bloques_en_revision['NO_REVISIONES_REALIZADAS'].astype(int).tolist(),
-            orientation='h', marker=dict(color=bloques_en_revision['COLOR'].tolist()),
-            text=[f'{rev} rev' for rev in bloques_en_revision['NO_REVISIONES_REALIZADAS'].astype(int)],
-            textposition='auto', textfont=dict(
-                size=tipo.get('valores_graficos', 15), 
-                color='white', 
-                family=font_family,
-                weight='bold'
-            ),
-            hovertemplate='<b style="font-size:14px">%{y}</b><br>Revisiones: %{x}<br>Estatus: %{customdata[0]}<br>Peso: %{customdata[1]:,.0f}<extra></extra>',
-            customdata=list(zip(bloques_en_revision['ESTATUS'], bloques_en_revision['PESO'])),
-            showlegend=False
-        ), row=4, col=1)
+    # Row 4: Bloques en revisión (DESHABILITADO)
+    # if len(bloques_en_revision) > 0:
+    #     fig.add_trace(go.Bar(
+    #         y=bloques_en_revision['BLOQUE_ID'].tolist(),
+    #         x=bloques_en_revision['NO_REVISIONES_REALIZADAS'].astype(int).tolist(),
+    #         orientation='h', marker=dict(color=bloques_en_revision['COLOR'].tolist()),
+    #         text=[f'{rev} rev' for rev in bloques_en_revision['NO_REVISIONES_REALIZADAS'].astype(int)],
+    #         textposition='auto', textfont=dict(
+    #             size=tipo.get('valores_graficos', 15), 
+    #             color='white', 
+    #             family=font_family,
+    #             weight='bold'
+    #         ),
+    #         hovertemplate='<b style="font-size:14px">%{y}</b><br>Revisiones: %{x}<br>Estatus: %{customdata[0]}<br>Peso: %{customdata[1]:,.0f}<extra></extra>',
+    #         customdata=list(zip(bloques_en_revision['ESTATUS'], bloques_en_revision['PESO'])),
+    #         showlegend=False
+    #     ), row=4, col=1)
     
     # Layout con diseño IBCS
     # Construir subtítulo con métricas clave
@@ -502,26 +517,9 @@ def generar_dashboard(mej: pd.DataFrame, config: Dict, semana_corte: str = "S186
         title_font=dict(size=tipo.get('subtitulos', 22), family=font_family, color=texto_principal), 
         gridcolor=grid_color, tickfont=dict(color=texto_color, family=font_family, size=14)
     )
-    fig.update_xaxes(
-        title_text="<b>Número de Revisiones</b>", row=4, col=1,
-        title_font=dict(size=tipo.get('etiquetas', 18), family=font_family, color=texto_principal), 
-        gridcolor=grid_color, tickfont=dict(color=texto_color, family=font_family, size=14),
-        dtick=1, tickmode='linear'
-    )
-    fig.update_yaxes(
-        title_text="<b>Bloque / Dossier</b>", row=4, col=1,
-        title_font=dict(size=tipo.get('etiquetas', 18), family=font_family, color=texto_principal), 
-        tickfont=dict(size=13, family=font_family, color=texto_color),
-        type='category', categoryorder='array',
-        categoryarray=bloques_en_revision['BLOQUE_ID'].tolist() if len(bloques_en_revision) > 0 else [],
-        gridcolor=grid_color
-    )
-    
-    # Remover grid de los gráficos de barras (Row 3 y Row 4)
+    # Remover grid de los gráficos de barras (Row 3)
     fig.update_xaxes(showgrid=False, zeroline=False, row=3)
     fig.update_yaxes(showgrid=False, zeroline=False, row=3)
-    fig.update_xaxes(showgrid=False, zeroline=False, row=4)
-    fig.update_yaxes(showgrid=False, zeroline=False, row=4)
     
     # Ajustar subtítulos con estilo IBCS y mejor legibilidad
     for i, annotation in enumerate(fig.layout.annotations):
@@ -777,17 +775,17 @@ Ejemplos:
             )
             barras_etapa_peso.write_html(str(graficos_dir / "06_barras_etapa_peso.html"))
         
-        # Barras: Bloques en Ciclo de Revisión
-        if len(fig.data) > 8 and len(bloques) > 0:
-            barras_revision = go.Figure(fig.data[8])
-            barras_revision.update_layout(
-                title="Bloques en Ciclo de Revisión (Top 15)", 
-                xaxis_title="Número de Revisiones",
-                yaxis_title="Bloque / Dossier",
-                height=600, 
-                width=800
-            )
-            barras_revision.write_html(str(graficos_dir / "07_barras_bloques_revision.html"))
+        # Barras: Bloques en Ciclo de Revisión (DESHABILITADO)
+        # if len(fig.data) > 8 and len(bloques) > 0:
+        #     barras_revision = go.Figure(fig.data[8])
+        #     barras_revision.update_layout(
+        #         title="Bloques en Ciclo de Revisión (Top 15)", 
+        #         xaxis_title="Número de Revisiones",
+        #         yaxis_title="Bloque / Dossier",
+        #         height=600, 
+        #         width=800
+        #     )
+        #     barras_revision.write_html(str(graficos_dir / "07_barras_bloques_revision.html"))
         
         logger.info(f"✅ {len(list(graficos_dir.glob('*.html')))} gráficos individuales guardados en: {graficos_dir.relative_to(output_dir)}")
     

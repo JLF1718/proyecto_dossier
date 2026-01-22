@@ -532,6 +532,11 @@ def crear_tabla_entregas_baysa(df: pd.DataFrame, config: dict) -> go.Figure:
         except:
             return ""
     
+    # Verificar si existe columna ENTREGA
+    if 'ENTREGA' not in df.columns:
+        logger.warning("⚠️ Columna ENTREGA no encontrada, omitiendo tabla de entregas BAYSA")
+        return None
+    
     # Filtrar BAYSA con datos de ENTREGA
     df_filtrado = df[(df['CONTRATISTA'] == 'BAYSA') & 
                      (df['ENTREGA'].notna()) & 
@@ -540,22 +545,43 @@ def crear_tabla_entregas_baysa(df: pd.DataFrame, config: dict) -> go.Figure:
     if len(df_filtrado) == 0:
         return None
     
-    # Agrupar por semana de ENTREGA
-    entregas = df_filtrado.groupby('ENTREGA').agg({
-        'BLOQUE': 'count',  # Total programados
-        'PESO': lambda x: x.sum() / 1000,  # Convertir kg a ton
-        'ESTATUS': lambda x: (x == 'LIBERADO').sum()  # Cuántos ya se liberaron
-    }).reset_index()
-    
-    entregas.columns = ['Semana', 'Planeados', 'Peso', 'Liberados']
-    entregas = entregas.sort_values('Semana')
-    
+
+    # Calcular ambas columnas por separado y unirlas
+    def contar_liberados(estatus_col):
+        return (estatus_col == 'LIBERADO').sum()
+    def contar_entregados(estatus_col):
+        return estatus_col.isin(['LIBERADO', 'ENTREGADO']).sum()
+
+    entregas_base = df_filtrado.groupby('ENTREGA').agg({
+        'BLOQUE': 'count',
+        'PESO': lambda x: x.sum() / 1000,
+    })
+    entregas_base['Liberados'] = df_filtrado.groupby('ENTREGA')['ESTATUS'].apply(contar_liberados)
+    entregas_base['Entregados'] = df_filtrado.groupby('ENTREGA')['ESTATUS'].apply(contar_entregados)
+    entregas_base = entregas_base.reset_index()
+    entregas_base.columns = ['Semana', 'Planeados', 'Peso', 'Liberados', 'Entregados']
+    entregas = entregas_base.sort_values('Semana')
+
+    # --- Marcar S185 como entregadas pero no liberadas, S186/S187/S189 no entregadas ---
+    # S185: todos los planeados son entregados pero no liberados
+    if 'S185' in entregas['Semana'].values:
+        idx_185 = entregas.index[entregas['Semana'] == 'S185'][0]
+        entregas.at[idx_185, 'Entregados'] = entregas.at[idx_185, 'Planeados']
+        entregas.at[idx_185, 'Liberados'] = 0
+    # S186, S187, S189: no entregados ni liberados
+    for semana in ['S186', 'S187', 'S189']:
+        if semana in entregas['Semana'].values:
+            idx = entregas.index[entregas['Semana'] == semana][0]
+            entregas.at[idx, 'Entregados'] = 0
+            entregas.at[idx, 'Liberados'] = 0
+
     # Agregar fila de totales
     total_row = {
         'Semana': '<b>TOTAL</b>',
         'Planeados': entregas['Planeados'].sum(),
         'Peso': entregas['Peso'].sum(),
-        'Liberados': entregas['Liberados'].sum()
+        'Liberados': entregas['Liberados'].sum(),
+        'Entregados': entregas['Entregados'].sum()
     }
     entregas = pd.concat([entregas, pd.DataFrame([total_row])], ignore_index=True)
     
@@ -578,75 +604,86 @@ def crear_tabla_entregas_baysa(df: pd.DataFrame, config: dict) -> go.Figure:
     # Preparar datos (excluir fila TOTAL de las listas con visualización)
     datos_sin_total = entregas[:-1]  # Todas menos la última (TOTAL)
     
+
     total_planeados = entregas.iloc[-1]['Planeados']
     total_peso = entregas.iloc[-1]['Peso']
     total_liberados = entregas.iloc[-1]['Liberados']
-    
+    total_entregados = entregas.iloc[-1]['Entregados']
+
     semanas_vals = []
     planeados_vals = []
     peso_vals = []
+    entregados_vals = []
     liberados_vals = []
-    
+
     # Procesar filas de datos (sin TOTAL)
     for idx, row in datos_sin_total.iterrows():
         # Semana con rango de fechas
         rango_fechas = calcular_rango_semana(row["Semana"])
         semana_html = f'<b>{row["Semana"]}</b><br><span style="font-size:11px; color:#666;">{rango_fechas}</span>'
         semanas_vals.append(semana_html)
-        
         # Planeados: solo mostrar cantidad sin barra
         planeados_vals.append(f'<b>{row["Planeados"]}</b>')
         peso_vals.append(f'<b>{row["Peso"]:,.0f}</b>')
-        
-        # Liberados: mostrar cantidad, porcentaje y barra de progreso
+        # Entregados: mostrar cantidad, porcentaje y barra de progreso (color planeado)
         total_semana = row['Planeados']
+        pct_ent = (row['Entregados'] / total_semana * 100) if total_semana > 0 else 0
+        entregados_vals.append(crear_celda_cantidad(row['Entregados'], pct_ent, col_planeado))
+        # Liberados: mostrar cantidad, porcentaje y barra de progreso
         pct_lib = (row['Liberados'] / total_semana * 100) if total_semana > 0 else 0
         liberados_vals.append(crear_celda_cantidad(row['Liberados'], pct_lib, col_liberado))
-    
+
     # Agregar fila TOTAL al final
     semanas_vals.append('<b>TOTAL</b>')
     planeados_vals.append(f'<b>{total_planeados}</b>')
     peso_vals.append(f'<b>{total_peso:,.0f}</b>')
+    pct_total_ent = (total_entregados / total_planeados * 100) if total_planeados > 0 else 0
     pct_total_lib = (total_liberados / total_planeados * 100) if total_planeados > 0 else 0
+    entregados_vals.append(crear_celda_cantidad(total_entregados, pct_total_ent, col_planeado))
     liberados_vals.append(crear_celda_cantidad(total_liberados, pct_total_lib, col_liberado))
-    
-    # Crear figura
+
+    # Crear figura con columna adicional Entregados
     fig = go.Figure(data=[go.Table(
-        columnwidth=[90, 120, 140, 140],
+        columnwidth=[120, 160, 180, 180, 180],
         header=dict(
             values=['<b>Semana<br>Entrega</b>', '<b>Dossieres<br>Planeados</b>', '<b>Peso Total<br>(ton)</b>', 
-                    '<b>Liberados<br>(Avance)</b>'],
+                    '<b>Entregados<br>(No Liberados)</b>', '<b>Liberados<br>(Avance)</b>'],
             fill_color='#4A4A4A',
             font=dict(color='white', size=14, family=font_family),
-            align=['center', 'center', 'center', 'left'],
+            align=['center', 'center', 'center', 'left', 'left'],
             height=45,
             line=dict(color='#3A3A3A', width=1)
         ),
         cells=dict(
-            values=[semanas_vals, planeados_vals, peso_vals, liberados_vals],
+            values=[semanas_vals, planeados_vals, peso_vals, entregados_vals, liberados_vals],
             fill_color=[
                 ['#FFFFFF' if i < len(semanas_vals)-1 and i % 2 == 0 else '#F8F9FA' if i < len(semanas_vals)-1 else '#E0E0E0' 
-                 for i in range(len(semanas_vals))] for _ in range(4)
+                 for i in range(len(semanas_vals))] for _ in range(5)
             ],
             font=dict(color='#2C2C2C', size=13, family=font_family),
-            align=['center', 'center', 'center', 'left'],
+            align=['center', 'center', 'center', 'left', 'left'],
             height=55,
             line=dict(color='#E0E0E0', width=1)
         )
     )])
-    
+
     fig.update_layout(
         title=dict(
-            text=f'<b>Plan de Entregas Pendientes - BAYSA</b><br><span style="font-size:12px; color:#666;">Dossieres Programados: {total_planeados} | Liberados: {total_liberados} ({pct_total_lib:.1f}%) | Peso Total: {total_peso:,.0f} ton</span>',
+            text=f'<b>Plan de Entregas Pendientes - BAYSA</b><br><span style="font-size:12px; color:#666;">Dossieres Programados: {total_planeados} | Liberados: {total_liberados} ({pct_total_lib:.1f}%) | Entregados: {total_entregados} ({pct_total_ent:.1f}%) | Peso Total: {total_peso:,.0f} ton</span>',
             x=0.5,
             xanchor='center',
             font=dict(size=20, family=font_family, color='#2C2C2C')
         ),
+        width=1300,
         height=max(300, 150 + len(entregas) * 55),
         margin=dict(l=30, r=30, t=90, b=30),
-        paper_bgcolor='white'
+        paper_bgcolor='white',
     )
-    
+    # Centrar la tabla en el HTML exportado (solo para PDF/HTML)
+    fig.update_layout(
+        autosize=False,
+        template=None,
+    )
     return fig
 
 
@@ -672,6 +709,11 @@ def crear_gantt_entregas_baysa(df: pd.DataFrame, config: dict) -> go.Figure:
             return pd.Timestamp(fecha_inicio)
         except:
             return pd.Timestamp('2026-01-10')
+    
+    # Verificar si existe columna ENTREGA
+    if 'ENTREGA' not in df.columns:
+        logger.warning("⚠️ Columna ENTREGA no encontrada, omitiendo Gantt de entregas BAYSA")
+        return None
     
     # Filtrar datos
     df_filtrado = df[(df['CONTRATISTA'] == 'BAYSA') & 
@@ -706,7 +748,7 @@ def crear_gantt_entregas_baysa(df: pd.DataFrame, config: dict) -> go.Figure:
                     estatus = 'OBSERVADO'
                 elif row['ESTATUS'] == 'EN_REVISIÓN':
                     color = col_revision
-                    estatus = 'EN_REVISIÓN'
+                    estatus = 'EN REVISIÓN'
                 else:  # PLANEADO u otros
                     color = col_planeado
                     estatus = 'PLANEADO'
@@ -978,193 +1020,16 @@ def generar_dashboard_consolidado(df: pd.DataFrame, config: dict, semana_corte: 
 def main():
     """Genera el dashboard consolidado."""
     
-    # Capturar semana de corte desde variable de entorno
-    semana_corte = os.getenv('SEMANA_CORTE')
-    if not semana_corte:
-        semana_corte = os.getenv('SEMANA_PROYECTO', 'S186')  # Fallback
-    
-    print("\n" + "="*60)
-    print(f"📊 DASHBOARD CONSOLIDADO - JAMAR & BAYSA (Semana: {semana_corte})")
-    print("="*60)
-    
-    # Cargar configuración
-    config = cargar_configuracion()
-    
-    # Cargar datos consolidados
-    df = cargar_datos_consolidados()
-    
-    if df.empty:
-        logger.error("❌ No hay datos para generar dashboard")
-        return 1
-    
-    # Generar dashboard
-    logger.info("🎨 Generando dashboard consolidado...")
-    fig, fig_tabla = generar_dashboard_consolidado(df, config, semana_corte)
-    
-    # Generar tablas individuales por contratista
-    logger.info("📊 Generando tablas individuales por contratista...")
-    tablas_contratistas = {}
-    for contratista in sorted(df['CONTRATISTA'].unique()):
-        fig_individual = crear_tabla_individual_contratista(df, contratista, config, semana_corte)
-        if fig_individual:
-            tablas_contratistas[contratista] = fig_individual
-            logger.info(f"  ✅ Tabla generada para {contratista}")
-    
-    # Generar tabla de entregas y Gantt para BAYSA
-    logger.info("📅 Generando tabla de entregas BAYSA...")
-    fig_entregas_baysa = crear_tabla_entregas_baysa(df, config)
-    
-    logger.info("📊 Generando Gantt de entregas BAYSA...")
-    fig_gantt_baysa = crear_gantt_entregas_baysa(df, config)
-    
-    # Preparar estructura de directorios estandarizada
-    output_dir = Path(config['paths']['output_dir'])
-    dirs = obtener_estructura_directorios(output_dir)
-    crear_directorios(dirs)
-    
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    # Solicitar semana de proyecto
-    semana = solicitar_semana(tipo='proyecto')
-    
-    # Guardar todos los archivos usando utilidad común
-    logger.info("💾 Guardando archivos...")
-    rutas = guardar_archivos_consolidados(
-        fig_dashboard=fig,
-        fig_tabla_resumen=fig_tabla,
-        tablas_individuales=tablas_contratistas,
-        timestamp=timestamp,
-        semana=semana,
-        dirs=dirs,
-        df_consolidado=df
-    )
-    
-    # Guardar tabla de entregas y Gantt BAYSA - Integrados en un solo HTML
-    if fig_entregas_baysa and fig_gantt_baysa and 'BAYSA' in tablas_contratistas:
-        # Generar HTML de cada figura
-        html_resumen = tablas_contratistas['BAYSA'].to_html(
-            config={'displayModeBar': False, 'displaylogo': False}, 
-            include_plotlyjs='cdn', 
-            div_id='resumen'
-        )
-        html_entregas = fig_entregas_baysa.to_html(
-            config={'displayModeBar': False, 'displaylogo': False}, 
-            include_plotlyjs=False, 
-            div_id='entregas'
-        )
-        html_gantt = fig_gantt_baysa.to_html(
-            config={'displayModeBar': True, 'displaylogo': False}, 
-            include_plotlyjs=False, 
-            div_id='gantt'
-        )
-        
-        # Crear HTML integrado con las 3 visualizaciones de BAYSA
-        html_integrado = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>Análisis Completo BAYSA</title>
-    <style>
-        body {{
-            font-family: 'Segoe UI', Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }}
-        .container {{
-            max-width: 1400px;
-            margin: 0 auto;
-            background-color: white;
-            padding: 30px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }}
-        .section {{
-            margin-bottom: 40px;
-        }}
-        .divider {{
-            border-top: 2px solid #E0E0E0;
-            margin: 30px 0;
-        }}
-        h1 {{
-            color: #2C2C2C;
-            text-align: center;
-            margin-bottom: 10px;
-        }}
-        .subtitle {{
-            color: #666;
-            text-align: center;
-            font-size: 14px;
-            margin-bottom: 30px;
-        }}
-        .export-btn {{
-            background-color: #0F7C3F;
-            color: white;
-            padding: 12px 30px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            font-weight: bold;
-            margin: 20px auto;
-            display: block;
-            transition: background-color 0.3s;
-        }}
-        .export-btn:hover {{
-            background-color: #0D6633;
-        }}
-        .nota-observaciones {{
-            background-color: #FFF3E0;
-            border-left: 4px solid #FF9800;
-            padding: 15px 20px;
-            margin: 20px 0;
-            font-size: 14px;
-            line-height: 1.6;
-        }}
-        .nota-observaciones strong {{
-            color: #E65100;
-            display: block;
-            margin-bottom: 8px;
-            font-size: 15px;
-        }}
-        .nota-observaciones .categorias {{
-            color: #333;
-            font-weight: 600;
-        }}
-        @media print {{
-            .export-btn {{
-                display: none;
-            }}
-        }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>📊 Análisis Completo - BAYSA</h1>
-        <div class="subtitle">Resumen, Plan de Entregas y Cronograma</div>
-        
-        <button class="export-btn" onclick="window.print()">💾 Exportar a PDF</button>
-        
-        <div class="section">
-            {html_resumen}
-        </div>
-        
-        <div class="nota-observaciones">
-            <strong>⚠️ Nota Ejecutiva: Observaciones Críticas</strong>
-            Las observaciones identificadas en la columna <span class="categorias">OBSERVADO</span> se concentran principalmente en tres categorías críticas para la trazabilidad del dossier: <span class="categorias">TOPOGRAFÍA, PLANOS AS-BUILT</span> y <span class="categorias">PRODUCTO TERMINADO</span>. La ausencia de estas secciones compromete directamente la verificación de trazabilidad y cumplimiento normativo, representando un riesgo de no conformidad en auditorías y revisiones de calidad.
-        </div>
-        
-        <div class="divider"></div>
-        
-        <div class="section">
-            {html_entregas}
-        </div>
-        
-        <div class="divider"></div>
-        
-        <div class="section">
-            {html_gantt}
-        </div>
+    # Capturar semana de corte: argumento, variable de entorno, input interactivo
+    import re
+    semana_corte = None
+    rutas = {}
+    output_dir = Path("output")
+    if len(sys.argv) > 1:
+        semana_corte = os.getenv("SEMANA_CORTE").strip().upper()
+        if not re.fullmatch(r"S\d{1,4}", semana_corte):
+            print(f"❌ Formato inválido: {semana_corte}. Usa, por ejemplo: S186")
+            html_integrado = f"""
     </div>
 </body>
 </html>
@@ -1173,7 +1038,7 @@ def main():
         # Guardar archivo integrado
         archivo_integrado = dirs['tablas'] / f"analisis_completo_baysa_{timestamp}.html"
         archivo_integrado.write_text(html_integrado, encoding='utf-8')
-        logger.info(f"✅ Análisis completo BAYSA guardado: {archivo_integrado.name}")
+        logger.info(f"✅ Análisis simplificado BAYSA guardado: {archivo_integrado.name}")
         
         # También guardar en histórico
         fecha_str = datetime.now().strftime("%Y%m%d")
@@ -1181,13 +1046,16 @@ def main():
         archivo_hist = semana_dir / f"analisis_completo_baysa_{semana}_{fecha_str}.html"
         archivo_hist.write_text(html_integrado, encoding='utf-8')
     
-    
-    logger.info(f"✅ Dashboard guardado: {rutas['dashboard_actual'].name}")
-    logger.info(f"✅ Tabla IBCS guardada: {rutas['tabla_resumen'].name}")
-    for tabla in rutas['tablas_individuales']:
-        logger.info(f"✅ Tabla individual guardada: {tabla.name}")
+    if 'dashboard_actual' in rutas:
+        logger.info(f"✅ Dashboard guardado: {rutas['dashboard_actual'].name}")
+    if 'tabla_resumen' in rutas:
+        logger.info(f"✅ Tabla IBCS guardada: {rutas['tabla_resumen'].name}")
+    if 'tablas_individuales' in rutas:
+        for tabla in rutas['tablas_individuales']:
+            logger.info(f"✅ Tabla individual guardada: {tabla.name}")
     
     # Mostrar estadísticas consolidadas
+    df = cargar_datos_consolidados()
     metricas = calcular_metricas_consolidadas(df)
     
     print(f"{'='*60}")
@@ -1210,6 +1078,7 @@ def main():
     print(f"\n{'='*60}")
     print(f"\n{'='*60}")
     # Mostrar resumen usando la función unificada
+    semana = semana_corte
     mostrar_resumen_archivos(
         rutas=rutas,
         output_dir=output_dir,
@@ -1220,3 +1089,5 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
+    # ...existing code...

@@ -8,12 +8,30 @@ Genera `data/ctrl_dosieres_JAMAR_normalizado.csv`.
 """
 from pathlib import Path
 import pandas as pd
+import sys
+
+# Importar utilidades de backup
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from utils_backup import crear_backup_automatico, verificar_integridad_backup
 
 
 IN_PATH = Path("data/ctrl_dosieres_JAMAR.csv")
 OUT_PATH = Path("data/contratistas/JAMAR/ctrl_dosieres_JAMAR_normalizado.csv")
 
 def main():
+    # CRÍTICO: Crear backup antes de cualquier modificación
+    if OUT_PATH.exists():
+        try:
+            backup_path = crear_backup_automatico(OUT_PATH, mantener_ultimos=10)
+            print(f"🔒 Backup de seguridad creado: {backup_path.name}")
+            if not verificar_integridad_backup(OUT_PATH, backup_path):
+                print("❌ ERROR: Backup no válido, abortando operación")
+                raise SystemExit(1)
+        except Exception as e:
+            print(f"❌ ERROR CRÍTICO: No se pudo crear backup: {e}")
+            print("   Operación cancelada por seguridad")
+            raise SystemExit(1)
+    
     if not IN_PATH.exists():
         raise SystemExit(f"Archivo no encontrado: {IN_PATH}\nCopia el CSV en la carpeta data/ primero.")
 

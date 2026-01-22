@@ -5,10 +5,11 @@ pandas>=2.0.0
 plotly>=5.0.0
 openpyxl>=3.0.0
 PyYAML>=6.0
+streamlit>=1.30.0
 
 # Exportación estática (opcional)
 # kaleido>=0.2.1
 
-# Testing (opcional)
-# pytest>=7.0.0
-# pytest-cov>=4.0.0
+# Testing y Protección de Datos
+pytest>=7.0.0
+pytest-cov>=4.0.0

@@ -16,6 +16,14 @@ import sys
 import yaml
 from pathlib import Path
 
+# Asegurar UTF-8 en stdout/stderr para evitar UnicodeEncodeError en Windows
+if sys.stdout.encoding.lower() != "utf-8":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 
 def actualizar_config(contratista: str, titulo: str, archivo_entrada: str) -> None:
     """Actualiza config.yaml para una contratista específica."""

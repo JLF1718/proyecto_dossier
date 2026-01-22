@@ -71,22 +71,25 @@ def guardar_archivos_individuales(
     Returns:
         Tupla con (archivo_actual, archivo_historico)
     """
+    from datetime import datetime
     # Guardar en dashboards/ (archivo actual)
-    dashboard_actual = dirs['dashboards'] / f"dashboard_{contratista}_{timestamp}.html"
+    ts_dash = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    dashboard_actual = dirs['dashboards'] / f"dashboard_{contratista}_{ts_dash}.html"
     fig_dashboard.write_html(
         str(dashboard_actual),
         config={'displayModeBar': True, 'displaylogo': False}
     )
-    
+
     # Crear carpeta de histórico para la semana
     fecha_str = datetime.now().strftime("%Y%m%d")
     semana_dir = dirs['historico'] / contratista / f"{semana}_{fecha_str}"
     semana_dir.mkdir(parents=True, exist_ok=True)
     graficos_dir = semana_dir / "graficos"
     graficos_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Guardar en histórico
-    dashboard_historico = semana_dir / f"dashboard_{contratista}_{semana}_{fecha_str}.html"
+    ts_hist = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    dashboard_historico = semana_dir / f"dashboard_{contratista}_{semana}_{ts_hist}.html"
     fig_dashboard.write_html(
         str(dashboard_historico),
         config={'displayModeBar': True, 'displaylogo': False}
@@ -119,22 +122,24 @@ def guardar_archivos_consolidados(
     """
     rutas = {}
     fecha_str = datetime.now().strftime("%Y%m%d")
-    
     # ===== ARCHIVOS ACTUALES =====
     # Dashboard consolidado
-    dashboard_actual = dirs['dashboards'] / f"dashboard_consolidado_{timestamp}.html"
+    ts_dash = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    dashboard_actual = dirs['dashboards'] / f"dashboard_consolidado_{ts_dash}.html"
     fig_dashboard.write_html(str(dashboard_actual), config={'displayModeBar': True, 'displaylogo': False})
     rutas['dashboard_actual'] = dashboard_actual
-    
+
     # Tabla resumen
-    tabla_resumen = dirs['tablas'] / f"tabla_resumen_ibcs_{timestamp}.html"
+    ts_tabla = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    tabla_resumen = dirs['tablas'] / f"tabla_resumen_ibcs_{ts_tabla}.html"
     fig_tabla_resumen.write_html(str(tabla_resumen), config={'displayModeBar': False, 'displaylogo': False})
     rutas['tabla_resumen'] = tabla_resumen
-    
+
     # Tablas individuales
     rutas['tablas_individuales'] = []
     for contratista, fig_tabla in tablas_individuales.items():
-        tabla_ind = dirs['tablas'] / f"tabla_{contratista.lower()}_{timestamp}.html"
+        ts_ind = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        tabla_ind = dirs['tablas'] / f"tabla_{contratista.lower()}_{ts_ind}.html"
         fig_tabla.write_html(str(tabla_ind), config={'displayModeBar': False, 'displaylogo': False})
         rutas['tablas_individuales'].append(tabla_ind)
     
