@@ -1020,39 +1020,15 @@ def generar_dashboard_consolidado(df: pd.DataFrame, config: dict, semana_corte: 
 def main():
     """Genera el dashboard consolidado."""
     
-    # Capturar semana de corte: argumento, variable de entorno, input interactivo
+    # Capturar semana de corte: SIEMPRE interactivo
     import re
-    semana_corte = None
     rutas = {}
     output_dir = Path("output")
-    if len(sys.argv) > 1:
-        semana_corte = os.getenv("SEMANA_CORTE").strip().upper()
-        if not re.fullmatch(r"S\d{1,4}", semana_corte):
-            print(f"❌ Formato inválido: {semana_corte}. Usa, por ejemplo: S186")
-            html_integrado = f"""
-    </div>
-</body>
-</html>
-"""
-        
-        # Guardar archivo integrado
-        archivo_integrado = dirs['tablas'] / f"analisis_completo_baysa_{timestamp}.html"
-        archivo_integrado.write_text(html_integrado, encoding='utf-8')
-        logger.info(f"✅ Análisis simplificado BAYSA guardado: {archivo_integrado.name}")
-        
-        # También guardar en histórico
-        fecha_str = datetime.now().strftime("%Y%m%d")
-        semana_dir = dirs['historico'] / f"{semana}_{fecha_str}"
-        archivo_hist = semana_dir / f"analisis_completo_baysa_{semana}_{fecha_str}.html"
-        archivo_hist.write_text(html_integrado, encoding='utf-8')
-    
-    if 'dashboard_actual' in rutas:
-        logger.info(f"✅ Dashboard guardado: {rutas['dashboard_actual'].name}")
-    if 'tabla_resumen' in rutas:
-        logger.info(f"✅ Tabla IBCS guardada: {rutas['tabla_resumen'].name}")
-    if 'tablas_individuales' in rutas:
-        for tabla in rutas['tablas_individuales']:
-            logger.info(f"✅ Tabla individual guardada: {tabla.name}")
+    semana_corte = solicitar_semana("proyecto")
+    if not re.fullmatch(r"S\d{1,4}", semana_corte):
+        print(f"❌ Formato inválido: {semana_corte}. Usa, por ejemplo: S186")
+        return 1
+    # ...existing code...
     
     # Mostrar estadísticas consolidadas
     df = cargar_datos_consolidados()
@@ -1089,5 +1065,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-
-    # ...existing code...
