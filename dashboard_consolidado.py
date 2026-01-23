@@ -1028,12 +1028,108 @@ def main():
     if not re.fullmatch(r"S\d{1,4}", semana_corte):
         print(f"❌ Formato inválido: {semana_corte}. Usa, por ejemplo: S186")
         return 1
-    # ...existing code...
-    
+    # Preparar estructura de directorios
+    dirs = obtener_estructura_directorios(output_dir)
+    crear_directorios(dirs)
+
     # Mostrar estadísticas consolidadas
     df = cargar_datos_consolidados()
     metricas = calcular_metricas_consolidadas(df)
-    
+
+    # Cargar configuración
+    config = cargar_configuracion()
+
+    # Generar dashboard y tabla resumen
+    fig_dashboard, fig_tabla_resumen = generar_dashboard_consolidado(df, config, semana_corte)
+
+    # Generar tablas individuales por contratista
+    tablas_individuales = {}
+    for contratista in sorted(df['CONTRATISTA'].unique()):
+        fig_tabla = crear_tabla_individual_contratista(df, contratista, config, semana_corte)
+        if fig_tabla is not None:
+            tablas_individuales[contratista] = fig_tabla
+
+
+    # Guardar archivos consolidados
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    rutas = guardar_archivos_consolidados(
+        fig_dashboard=fig_dashboard,
+        fig_tabla_resumen=fig_tabla_resumen,
+        tablas_individuales=tablas_individuales,
+        timestamp=timestamp,
+        semana=semana_corte,
+        dirs=dirs,
+        df_consolidado=df
+    )
+
+    # Exportar tabla ejecutiva BAYSA (visualización IBCS + Nota Ejecutiva)
+    df_baysa = df[df['CONTRATISTA'] == 'BAYSA']
+    if not df_baysa.empty:
+        timestamp_simple = datetime.now().strftime("%Y%m%d_%H%M%S")
+        nombre_archivo = f"analisis_completo_baysa_{timestamp_simple}.html"
+        ruta_archivo = Path("output/tablas") / nombre_archivo
+        # Crear tabla ejecutiva BAYSA
+        fig_baysa = crear_tabla_individual_contratista(df, 'BAYSA', config, semana_corte)
+        # Crear tabla de entregas BAYSA
+        fig_entregas = crear_tabla_entregas_baysa(df, config)
+        # Exportar ambas tablas a HTML temporales (side by side, no scroll, auto height)
+        temp_html1 = ruta_archivo.with_suffix('.temp1.html')
+        temp_html2 = ruta_archivo.with_suffix('.temp2.html')
+        fig_baysa.write_html(str(temp_html1), include_plotlyjs='cdn', full_html=False, config={"displayModeBar": False, "staticPlot": True})
+        if fig_entregas is not None:
+            fig_entregas.write_html(str(temp_html2), include_plotlyjs=False, full_html=False, config={"displayModeBar": False, "staticPlot": True})
+        # Nota Ejecutiva HTML (style matches provided image)
+        nota_ejecutiva = '''
+        <div style="background:#FFF6EA; border-left:4px solid #F6A623; padding:10px 18px; margin:12px 0 18px 0; font-family:Segoe UI,Arial,sans-serif;">
+            <span style="font-size:17px; font-weight:bold; color:#E67C00; vertical-align:middle; display:inline-block;">
+                <span style="font-size:1.3em; margin-right:7px; vertical-align:middle;">&#9888;</span> Nota Ejecutiva: Observaciones Críticas
+            </span>
+            <div style="font-size:14px; color:#222; margin-top:2px;">
+            Las observaciones identificadas en la columna OBSERVADO se concentran principalmente en tres categorías críticas para la trazabilidad del dossier: <b>TOPOGRAFÍA</b>, <b>PLANOS AS-BUILT</b> y <b>PRODUCTO TERMINADO</b>. La ausencia de estas secciones compromete directamente la verificación de trazabilidad y cumplimiento normativo, representando un riesgo de no conformidad en auditorías y revisiones de calidad.
+            </div>
+        </div>
+        '''
+        # Encabezado HTML personalizado
+        encabezado = f'''
+        <div style="text-align:center; margin-top:24px; margin-bottom:8px;">
+            <span style="font-size:2.1em; font-weight:bold; color:#222; font-family:Segoe UI,Arial,sans-serif; vertical-align:middle;">
+                <span style="vertical-align:middle;">&#128202;</span> Análisis Completo - BAYSA
+            </span>
+            <div style="font-size:1.08em; color:#444; margin-top:3px;">Resumen, Plan de Entregas y Cronograma</div>
+        </div>
+        '''
+        # Leer tablas Plotly generadas
+        with open(temp_html1, encoding='utf-8') as f:
+            tabla1_html = f.read()
+        tabla2_html = ''
+        if fig_entregas is not None:
+            with open(temp_html2, encoding='utf-8') as f:
+                tabla2_html = f.read()
+        # Unir todo y exportar (nota debajo de la tabla, menos espacio inferior)
+        with open(ruta_archivo, 'w', encoding='utf-8') as f:
+            f.write('<html><head><meta charset="utf-8"><title>Análisis Completo BAYSA</title>')
+            f.write('<style>body{background:#fafbfc;} .baysa-panel{max-width:1200px;margin:0 auto 6px auto;padding:0 0 0 0;background:#fff;border-radius:10px;box-shadow:0 2px 8px #0001;overflow:hidden;} .baysa-table{padding:18px 18px 0 18px; min-width:1050px; max-width:1150px;} .nota-ejecutiva-panel{margin:0;padding:0;border-radius:0 0 10px 10px;} .baysa-table .js-plotly-plot {overflow:visible!important;pointer-events:none!important;} .baysa-table .js-plotly-plot .main-svg {pointer-events:none!important;} </style>')
+            f.write('</head><body>')
+            f.write(encabezado)
+            f.write('<div style="max-width:1200px; margin:0 auto;">')
+            # Panel 1: Executive summary table + note inside panel, flush bottom
+            f.write('<div class="baysa-panel">')
+            f.write('<div class="baysa-table">')
+            f.write(tabla1_html)
+            f.write('</div>')
+            f.write(nota_ejecutiva.replace('<div ', '<div class="nota-ejecutiva-panel" ', 1))
+            f.write('</div>')
+            # Panel 2: Pending deliveries table
+            if tabla2_html:
+                f.write('<div class="baysa-panel"><div class="baysa-table">')
+                f.write(tabla2_html)
+                f.write('</div></div>')
+            f.write('</div></body></html>')
+        temp_html1.unlink(missing_ok=True)
+        if temp_html2.exists():
+            temp_html2.unlink(missing_ok=True)
+        print(f"✅ Tabla ejecutiva BAYSA generada: {ruta_archivo}")
+
     print(f"{'='*60}")
     print("📋 RESUMEN CONSOLIDADO")
     print(f"{'='*60}")
@@ -1042,7 +1138,7 @@ def main():
     print(f"  • Liberados: {metricas['dossiers_liberados']} ({metricas['pct_liberado']:.1f}%)")
     print(f"  • Peso Total: {metricas['peso_total']:,.0f} ton")
     print(f"  • Peso Liberado: {metricas['peso_liberado']:,.0f} ton ({metricas['pct_peso_liberado']:.1f}%)")
-    
+
     print(f"\nPor Contratista:")
     for contr, m in metricas['por_contratista'].items():
         print(f"\n  {contr}:")
@@ -1050,7 +1146,7 @@ def main():
         print(f"    • Liberados: {m['dossiers_liberados']} ({m['pct_liberado']:.1f}%)")
         print(f"    • Peso Total: {m['peso_total']:,.0f} ton")
         print(f"    • Peso Liberado: {m['peso_liberado']:,.0f} ton ({m['pct_peso_liberado']:.1f}%)")
-    
+
     print(f"\n{'='*60}")
     print(f"\n{'='*60}")
     # Mostrar resumen usando la función unificada
@@ -1060,7 +1156,7 @@ def main():
         output_dir=output_dir,
         semana=semana
     )
-    
+
     return 0
 
 if __name__ == "__main__":
