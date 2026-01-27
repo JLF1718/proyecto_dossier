@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+import os
 """
 Dashboard Consolidado - Múltiples Contratistas
 ===============================================
@@ -19,6 +19,7 @@ from datetime import datetime
 import logging
 import sys
 from typing import Tuple
+import re
 
 # Importar funciones core de métricas (ÚNICA FUENTE DE VERDAD)
 from metricas_core import (
@@ -1017,14 +1018,21 @@ def generar_dashboard_consolidado(df: pd.DataFrame, config: dict, semana_corte: 
     
     return fig, fig_tabla
 
+def obtener_semana():
+    semana = os.environ.get("SEMANA_CORTE")
+    if semana:
+        print(f"Usando semana de entorno: {semana}")
+        return semana.strip().upper()
+    else:
+        return input("📅 Ingresa el número de semana (ej: S183): ").strip().upper()
+
 def main():
     """Genera el dashboard consolidado."""
     
+    # Definir output_dir antes de usarlo
+    output_dir = Path('output')
     # Capturar semana de corte: SIEMPRE interactivo
-    import re
-    rutas = {}
-    output_dir = Path("output")
-    semana_corte = solicitar_semana("proyecto")
+    semana_corte = obtener_semana()
     if not re.fullmatch(r"S\d{1,4}", semana_corte):
         print(f"❌ Formato inválido: {semana_corte}. Usa, por ejemplo: S186")
         return 1
@@ -1159,13 +1167,26 @@ def main():
 
     # Actualizar bloques_liberados.md automáticamente
     try:
-        import subprocess
+        import subprocess, sys
         print("\nActualizando bloques_liberados.md...")
         subprocess.run([sys.executable, "scripts/exportar_bloques_liberados.py"], check=True)
         subprocess.run([sys.executable, "scripts/limpiar_md_bloques.py"], check=True)
         print("bloques_liberados.md actualizado correctamente.")
     except Exception as e:
         print(f"Error actualizando bloques_liberados.md: {e}")
+    # Al final de main, actualizar bloques_liberados.html
+    import subprocess, sys, os
+    script_path = os.path.join(os.path.dirname(__file__), 'scripts', 'exportar_bloques_liberados_json_html.py')
+    try:
+        result = subprocess.run([sys.executable, script_path], capture_output=True, text=True, encoding='utf-8')
+        if result.returncode == 0:
+            print('✅ bloques_liberados.html actualizado correctamente.')
+        else:
+            print('⚠️ Error actualizando bloques_liberados.html:')
+            print(result.stdout)
+            print(result.stderr)
+    except Exception as e:
+        print(f'⚠️ Error ejecutando exportar_bloques_liberados_json_html.py: {e}')
     return 0
 
 if __name__ == "__main__":
