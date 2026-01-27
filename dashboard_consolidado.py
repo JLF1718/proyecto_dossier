@@ -1157,6 +1157,15 @@ def main():
         semana=semana
     )
 
+    # Actualizar bloques_liberados.md automáticamente
+    try:
+        import subprocess
+        print("\nActualizando bloques_liberados.md...")
+        subprocess.run([sys.executable, "scripts/exportar_bloques_liberados.py"], check=True)
+        subprocess.run([sys.executable, "scripts/limpiar_md_bloques.py"], check=True)
+        print("bloques_liberados.md actualizado correctamente.")
+    except Exception as e:
+        print(f"Error actualizando bloques_liberados.md: {e}")
     return 0
 
 if __name__ == "__main__":

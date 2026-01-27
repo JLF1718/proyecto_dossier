@@ -6,25 +6,26 @@ output_md = Path('bloques_liberados.md')
 with open(input_md, encoding='utf-8') as f:
     lines = f.readlines()
 
-new_lines = []
+
+# Generar tabla Markdown limpia con encabezado y separador estándar
+tabla = []
+tabla.append('| Bloque | Peso (ton) | Semana |\n')
+tabla.append('|--------|------------|--------|\n')
 for line in lines:
-    if line.startswith('| Bloque'):
-        new_lines.append('| Bloque | Peso (ton) | Semana |\n')
-    elif line.startswith('|--------'):
-        new_lines.append('|--------|------------|--------|\n')
-    elif line.startswith('|') and '|' in line[1:]:
+    if line.startswith('|') and '|' in line[1:]:
         parts = [p.strip() for p in line.strip().split('|')]
-        # parts: ['', 'PRO_03', 'nan', '167.74', 'BAYSA', 'nan', '']
-        if len(parts) == 7:
-            # Bloque, Fecha, Peso, Semana, Nivel
+        if len(parts) >= 4:
             bloque = parts[1]
             peso = parts[3]
-            semana = parts[4]
-            new_lines.append(f'| {bloque} | {peso} | {semana} |\n')
-    else:
-        new_lines.append(line)
+            semana = parts[2] if len(parts) > 4 else ''
+            if bloque and peso and bloque != 'Bloque' and peso != 'Peso (ton)':
+                if semana == 'nan':
+                    semana = ''
+                if peso == 'nan':
+                    peso = ''
+                tabla.append(f'| {bloque} | {peso} | {semana} |\n')
 
 with open(output_md, 'w', encoding='utf-8') as f:
-    f.writelines(new_lines)
+    f.writelines(tabla)
 
 print('Archivo bloques_liberados.md actualizado sin columnas de fecha ni nivel de revisión.')

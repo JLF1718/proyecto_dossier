@@ -1,109 +1,115 @@
-
-<h1 align="center">Lista de Bloques Liberados</h1>
-
-<p align="center"><em>Tabla generada automáticamente. Para mejor visualización, abre este archivo en un visor Markdown compatible o exporta a PDF/HTML.</em></p>
-
----
-
-| <b>Bloque</b> | <b>Peso (ton)</b> | <b>Semana</b> |
-|:---:|---:|:---:|
-| PRO_03 | 167.74 | BAYSA |
-| PRO_04 | 348.31 | BAYSA |
-| PRO_05 | 284.50 | BAYSA |
-| PRO_06 | 160.30 | BAYSA |
-| PRO_07 | 114.40 | BAYSA |
-| PRO_08 | 20.56 | BAYSA |
-| PRO_09 | 100.45 | BAYSA |
-| PRO_10 | 24.89 | BAYSA |
-| PRO_11 | 71.27 | BAYSA |
-| PRO_12 | 128.78 | BAYSA |
-| PRO_13 | 86.82 | BAYSA |
-| PRO_14 | 22.07 | BAYSA |
-| PRO_15 | 18.61 | BAYSA |
-| PRO_16 | 95.63 | BAYSA |
-| PRO_17 | 21.05 | BAYSA |
-| PRO_18 | 18.61 | BAYSA |
-| PRO_19 | 95.69 | BAYSA |
-| PRO_20 | 71.69 | BAYSA |
-| PRO_21 | 71.68 | BAYSA |
-| PRO_22 | 76.06 | BAYSA |
-| PRO_25 | 91.66 | BAYSA |
-| PRO_26 | 88.18 | BAYSA |
-| PRO_27 | 87.39 | BAYSA |
-| PRO_28 | 69.25 | BAYSA |
-| PRO_29 | 19.66 | BAYSA |
-| PRO_30 | 26.23 | BAYSA |
-| PRO_31 | 334.91 | BAYSA |
-| PRO_32 | 275.83 | BAYSA |
-| PRO_35 | 69.99 | BAYSA |
-| PRO_36 | 48.28 | BAYSA |
-| PRO_39 | 58.68 | BAYSA |
-| PRO_41 | 76.67 | BAYSA |
-| PRO_43 | 229.47 | BAYSA |
-| PRO_44 | 74.23 | BAYSA |
-| PRO_45 | 90.20 | BAYSA |
-| PRO_46 | 48.04 | BAYSA |
-| PRO_48 | 25.56 | BAYSA |
-| PRO_50 | 299.99 | BAYSA |
-| PRO_53 | 68.76 | BAYSA |
-| PRO_54 | 44.95 | BAYSA |
-| PRO_64 | 51.38 | BAYSA |
-| PRO_77 | 18.61 | BAYSA |
-| PRO_78 | 71.70 | BAYSA |
-| PRO_87 | 30.78 | BAYSA |
-| SUE_01 | 315.07 | BAYSA |
-| SUE_02 | 331.79 | BAYSA |
-| SUE_03 | 75.36 | BAYSA |
-| SUE_04 | 23.10 | BAYSA |
-| SUE_05 | 23.86 | BAYSA |
-| SUE_06 | 35.19 | BAYSA |
-| SUE_07 | 41.54 | BAYSA |
-| SUE_08 | 22.29 | BAYSA |
-| SUE_09 | 22.34 | BAYSA |
-| SUE_10 | 122.63 | BAYSA |
-| SUE_11 | 121.82 | BAYSA |
-| SUE_12 | 83.37 | BAYSA |
-| SUE_13 | 77.49 | BAYSA |
-| SUE_14 | 39.93 | BAYSA |
-| SUE_15 | 11.89 | BAYSA |
-| SUE_16 | 12.11 | BAYSA |
-| SUE_17 | 18.60 | BAYSA |
-| SUE_18 | 19.85 | BAYSA |
-| SUE_19 | 77.02 | BAYSA |
-| SUE_25 | 141.87 | BAYSA |
-| SUE_26 | 42.98 | BAYSA |
-| SUE_27 | 50.53 | BAYSA |
-| SUE_28 | 37.31 | BAYSA |
-| SUE_29 | 75.10 | BAYSA |
-| SUE_30 | 46.69 | BAYSA |
-| SUE_32 | 22.45 | BAYSA |
-| SUE_40 | 14.05 | BAYSA |
-| SUE_42 | 19.84 | BAYSA |
-| SUE_48 | 362.07 | BAYSA |
-| SUE_49 | 141.42 | BAYSA |
-| SUE_50 | 141.73 | BAYSA |
-| SUE_51 | 50.59 | BAYSA |
-| SUE_52 | 43.50 | BAYSA |
-| SUE_53 | 76.52 | BAYSA |
-| SUE_55 | 101.69 | BAYSA |
-| SUE_57 | 22.45 | BAYSA |
-| SUE_58 | 22.45 | BAYSA |
-| SUE_61 | 77.54 | BAYSA |
-| SUE_62 | 77.54 | BAYSA |
-| SUE_65 | 14.05 | BAYSA |
-| SUE_66 | 14.05 | BAYSA |
-| SUE_67 | 19.84 | BAYSA |
-| SUE_68 | 19.84 | BAYSA |
-| SUE_72 | 338.58 | BAYSA |
-| SUE_73 | 230.84 | BAYSA |
-| SUE_76 | 22.82 | BAYSA |
-| SUE_80 | 42.57 | BAYSA |
-| SUE_81 | 45.68 | BAYSA |
-| SUE_82 | 22.34 | BAYSA |
-| SUE_83 | 22.37 | BAYSA |
-| SUE_86 | 77.49 | BAYSA |
-| SUE_87 | 83.37 | BAYSA |
-| SUE_89 | 39.93 | BAYSA |
-| SUE_91 | 11.89 | BAYSA |
-| SUE_92 | 19.85 | BAYSA |
-| SUE_93 | 18.58 | BAYSA |
+| Bloque | Peso (ton) | Semana |
+|--------|------------|--------|
+| -------- | ------------ | -------- |
+| PRO_02 | 308.95 | S189 |
+| PRO_03 | 167.74 |  |
+| PRO_04 | 348.31 |  |
+| PRO_05 | 284.50 |  |
+| PRO_06 | 160.30 |  |
+| PRO_07 | 114.40 |  |
+| PRO_08 | 20.56 |  |
+| PRO_09 | 100.45 |  |
+| PRO_10 | 24.89 |  |
+| PRO_11 | 71.27 |  |
+| PRO_12 | 128.78 |  |
+| PRO_13 | 86.82 |  |
+| PRO_14 | 22.07 |  |
+| PRO_15 | 18.61 |  |
+| PRO_16 | 95.63 |  |
+| PRO_17 | 21.05 |  |
+| PRO_18 | 18.61 |  |
+| PRO_19 | 95.69 |  |
+| PRO_20 | 71.69 |  |
+| PRO_21 | 71.68 |  |
+| PRO_22 | 76.06 |  |
+| PRO_25 | 91.66 |  |
+| PRO_26 | 88.18 |  |
+| PRO_27 | 87.39 |  |
+| PRO_28 | 69.25 |  |
+| PRO_29 | 19.66 |  |
+| PRO_30 | 26.23 |  |
+| PRO_31 | 334.91 |  |
+| PRO_32 | 275.83 |  |
+| PRO_35 | 69.99 | S189 |
+| PRO_36 | 48.28 |  |
+| PRO_39 | 58.68 |  |
+| PRO_41 | 76.67 |  |
+| PRO_43 | 229.47 | S189 |
+| PRO_44 | 74.23 |  |
+| PRO_45 | 90.20 |  |
+| PRO_46 | 48.04 |  |
+| PRO_47 | 142.23 | S189 |
+| PRO_48 | 25.56 |  |
+| PRO_50 | 299.99 |  |
+| PRO_53 | 68.76 |  |
+| PRO_54 | 44.95 |  |
+| PRO_56 | 95.66 | S189 |
+| PRO_64 | 51.38 |  |
+| PRO_77 | 18.61 |  |
+| PRO_78 | 71.70 |  |
+| PRO_87 | 30.78 |  |
+| PRO_88 | 37.79 | S189 |
+| SUE_01 | 315.07 |  |
+| SUE_02 | 331.79 |  |
+| SUE_03 | 75.36 |  |
+| SUE_04 | 23.10 |  |
+| SUE_05 | 23.86 |  |
+| SUE_06 | 35.19 |  |
+| SUE_07 | 41.54 |  |
+| SUE_08 | 22.29 |  |
+| SUE_09 | 22.34 |  |
+| SUE_10 | 122.63 |  |
+| SUE_11 | 121.82 |  |
+| SUE_12 | 83.37 |  |
+| SUE_13 | 77.49 |  |
+| SUE_14 | 39.93 |  |
+| SUE_15 | 11.89 |  |
+| SUE_16 | 12.11 |  |
+| SUE_17 | 18.60 |  |
+| SUE_18 | 19.85 |  |
+| SUE_19 | 77.02 |  |
+| SUE_20 | 79.05 | S189 |
+| SUE_23 | 356.37 | S189 |
+| SUE_25 | 141.87 |  |
+| SUE_26 | 42.98 |  |
+| SUE_27 | 50.53 |  |
+| SUE_28 | 37.31 |  |
+| SUE_29 | 75.10 | S189 |
+| SUE_30 | 46.69 |  |
+| SUE_31 | 118.82 | S189 |
+| SUE_32 | 22.45 |  |
+| SUE_33 | 22.45 | S187 |
+| SUE_36 | 77.52 | S189 |
+| SUE_38 | 41.59 | S189 |
+| SUE_40 | 14.05 |  |
+| SUE_41 | 14.05 | S187 |
+| SUE_42 | 19.84 |  |
+| SUE_43 | 19.84 | S187 |
+| SUE_48 | 362.07 |  |
+| SUE_49 | 141.42 |  |
+| SUE_50 | 141.73 |  |
+| SUE_51 | 50.59 |  |
+| SUE_52 | 43.50 |  |
+| SUE_53 | 76.52 |  |
+| SUE_55 | 101.69 |  |
+| SUE_57 | 22.45 |  |
+| SUE_58 | 22.45 |  |
+| SUE_61 | 77.54 |  |
+| SUE_62 | 77.54 |  |
+| SUE_65 | 14.05 |  |
+| SUE_66 | 14.05 |  |
+| SUE_67 | 19.84 |  |
+| SUE_68 | 19.84 |  |
+| SUE_72 | 338.58 |  |
+| SUE_73 | 230.84 |  |
+| SUE_76 | 22.82 |  |
+| SUE_80 | 42.57 |  |
+| SUE_81 | 45.68 |  |
+| SUE_82 | 22.34 |  |
+| SUE_83 | 22.37 |  |
+| SUE_86 | 77.49 |  |
+| SUE_87 | 83.37 |  |
+| SUE_89 | 39.93 |  |
+| SUE_91 | 11.89 |  |
+| SUE_92 | 19.85 |  |
+| SUE_93 | 18.58 |  |

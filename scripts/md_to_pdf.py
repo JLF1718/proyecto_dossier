@@ -19,7 +19,10 @@ options = {
     'margin-right': '10mm',
 }
 
-# Convertir HTML a PDF
-pdfkit.from_string(html, str(pdf_file), options=options)
+
+# Configuración explícita de wkhtmltopdf para Windows
+import pdfkit
+config = pdfkit.configuration(wkhtmltopdf=r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe")
+pdfkit.from_string(html, str(pdf_file), options=options, configuration=config)
 
 print('PDF generado:', pdf_file)

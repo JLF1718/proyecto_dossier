@@ -536,6 +536,7 @@ def generar_tablas(semana: str):
         try:
             import subprocess, sys, os
             from pathlib import Path
+            import streamlit.components.v1 as components
             working_dir = str(Path(__file__).parent)
             semana_upper = semana.strip().upper()
             script = "dashboard_consolidado.py"
@@ -543,13 +544,20 @@ def generar_tablas(semana: str):
             env["PYTHONUTF8"] = "1"
             env["PYTHONIOENCODING"] = "utf-8"
             env["SEMANA_CORTE"] = semana_upper
+            st.info(f"Ejecutando: {sys.executable} -X utf8 {script}\nCWD: {working_dir}\nSEMANA_CORTE: {semana_upper}")
             try:
                 r = subprocess.run([
                     sys.executable, "-X", "utf8", script
-                ], capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=working_dir, env=env, timeout=120)
-            except subprocess.TimeoutExpired:
-                st.error("⏱️ Timeout: El proceso tardó más de 120 segundos y fue cancelado.")
+                ], capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=working_dir, env=env, timeout=30)
+            except subprocess.TimeoutExpired as e:
+                st.error("⏱️ Timeout: El proceso tardó más de 30 segundos y fue cancelado.")
+                with st.expander("Ver salida parcial del proceso"):
+                    if hasattr(e, 'output') and e.output:
+                        st.text(e.output)
+                    if hasattr(e, 'stderr') and e.stderr:
+                        st.text("\n[stderr]\n" + e.stderr)
                 return
+            st.info(f"[stdout]:\n{r.stdout}\n[stderr]:\n{r.stderr}")
             if r.returncode != 0:
                 st.error(f"❌ Error generando tablas")
                 with st.expander("Ver salida del proceso"):
@@ -557,7 +565,28 @@ def generar_tablas(semana: str):
                     if r.stderr:
                         st.text("\n[stderr]\n" + r.stderr)
                 return
-            st.success("✅ Tablas generadas correctamente")
+            # Ejecutar exportar_bloques_liberados_json_html.py
+            script2 = str(Path(working_dir) / "scripts" / "exportar_bloques_liberados_json_html.py")
+            st.info(f"Ejecutando: {sys.executable} -X utf8 {script2}\nCWD: {working_dir}")
+            r2 = subprocess.run([
+                sys.executable, "-X", "utf8", script2
+            ], capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=working_dir, env=env)
+            st.info(f"[stdout]:\n{r2.stdout}\n[stderr]:\n{r2.stderr}")
+            if r2.returncode != 0:
+                st.warning("Tablas generadas, pero error al generar bloques_liberados.html")
+                with st.expander("Ver salida del proceso de bloques liberados"):
+                    st.text(r2.stdout or "(sin salida)")
+                    if r2.stderr:
+                        st.text("\n[stderr]\n" + r2.stderr)
+            else:
+                st.success("✅ Tablas y bloques liberados generados correctamente")
+                # Mostrar tabla bloques_liberados.html
+                html_path = Path(working_dir) / "bloques_liberados.html"
+                if html_path.exists():
+                    with open(html_path, "r", encoding="utf-8") as f:
+                        html_content = f.read()
+                    st.caption("Vista previa de bloques liberados:")
+                    components.html(html_content, height=600, scrolling=True)
             # Mostrar archivos recientes
             out_tablas = BASE / "output" / "tablas"
             archivos_tablas = []

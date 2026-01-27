@@ -26,8 +26,13 @@ liberados = liberados[cols]
 # Convertir peso a toneladas
 liberados['PESO'] = liberados['PESO'] / 1000
 
-# Guardar en Markdown
-with open('bloques_liberados.md', 'a', encoding='utf-8') as f:
+
+# Guardar en Markdown con encabezado y separador estándar
+with open('bloques_liberados.md', 'w', encoding='utf-8') as f:
+    f.write('# Lista de Bloques Liberados\n\n')
+    f.write('Tabla generada automáticamente.\n\n')
+    f.write('| Bloque | Semana | Peso (ton) | Contratista | No. Revisión |\n')
+    f.write('|--------|--------|------------|-------------|--------------|\n')
     for _, row in liberados.iterrows():
         f.write(f"| {row['BLOQUE']} | {row['ENTREGA']} | {row['PESO']:.2f} | {row['CONTRATISTA']} | {row['No. REVISIÓN']} |\n")
 
