@@ -96,6 +96,13 @@ def cargar_datos_consolidados() -> pd.DataFrame:
     
     # Combinar dataframes
     df_consolidado = pd.concat(dfs, ignore_index=True)
+    
+    # Normalizar nombre de columna CONTRATISTA (puede venir como 'Contratista' después de concat)
+    if 'Contratista' in df_consolidado.columns and 'CONTRATISTA' not in df_consolidado.columns:
+        df_consolidado.rename(columns={'Contratista': 'CONTRATISTA'}, inplace=True)
+    elif 'contratista' in df_consolidado.columns and 'CONTRATISTA' not in df_consolidado.columns:
+        df_consolidado.rename(columns={'contratista': 'CONTRATISTA'}, inplace=True)
+    
     logger.info(f"📊 Datos consolidados: {len(df_consolidado)} registros de {df_consolidado['CONTRATISTA'].nunique()} contratistas")
     
     return df_consolidado
@@ -562,19 +569,6 @@ def crear_tabla_entregas_baysa(df: pd.DataFrame, config: dict) -> go.Figure:
     entregas_base = entregas_base.reset_index()
     entregas_base.columns = ['Semana', 'Planeados', 'Peso', 'Liberados', 'Entregados']
     entregas = entregas_base.sort_values('Semana')
-
-    # --- Marcar S185 como entregadas pero no liberadas, S186/S187/S189 no entregadas ---
-    # S185: todos los planeados son entregados pero no liberados
-    if 'S185' in entregas['Semana'].values:
-        idx_185 = entregas.index[entregas['Semana'] == 'S185'][0]
-        entregas.at[idx_185, 'Entregados'] = entregas.at[idx_185, 'Planeados']
-        entregas.at[idx_185, 'Liberados'] = 0
-    # S186, S187, S189: no entregados ni liberados
-    for semana in ['S186', 'S187', 'S189']:
-        if semana in entregas['Semana'].values:
-            idx = entregas.index[entregas['Semana'] == semana][0]
-            entregas.at[idx, 'Entregados'] = 0
-            entregas.at[idx, 'Liberados'] = 0
 
     # Agregar fila de totales
     total_row = {
