@@ -555,10 +555,13 @@ def crear_tabla_entregas_baysa(df: pd.DataFrame, config: dict) -> go.Figure:
     
 
     # Calcular ambas columnas por separado y unirlas
+    # Liberados: solo los que tienen estatus LIBERADO
     def contar_liberados(estatus_col):
         return (estatus_col == 'LIBERADO').sum()
+    
+    # Entregados: todos los que NO están en PLANEADO (incluye EN_REVISIÓN, OBSERVADO, LIBERADO)
     def contar_entregados(estatus_col):
-        return estatus_col.isin(['LIBERADO', 'ENTREGADO']).sum()
+        return (estatus_col != 'PLANEADO').sum()
 
     entregas_base = df_filtrado.groupby('ENTREGA').agg({
         'BLOQUE': 'count',
@@ -630,12 +633,12 @@ def crear_tabla_entregas_baysa(df: pd.DataFrame, config: dict) -> go.Figure:
 
     # Agregar fila TOTAL al final
     semanas_vals.append('<b>TOTAL</b>')
-    planeados_vals.append(f'<b>{total_planeados}</b>')
+    planeados_vals.append(f'<b>{int(total_planeados)}</b>')
     peso_vals.append(f'<b>{total_peso:,.0f}</b>')
-    pct_total_ent = (total_entregados / total_planeados * 100) if total_planeados > 0 else 0
-    pct_total_lib = (total_liberados / total_planeados * 100) if total_planeados > 0 else 0
-    entregados_vals.append(crear_celda_cantidad(total_entregados, pct_total_ent, col_planeado))
-    liberados_vals.append(crear_celda_cantidad(total_liberados, pct_total_lib, col_liberado))
+    pct_total_ent = (int(total_entregados) / int(total_planeados) * 100) if total_planeados > 0 else 0
+    pct_total_lib = (int(total_liberados) / int(total_planeados) * 100) if total_planeados > 0 else 0
+    entregados_vals.append(crear_celda_cantidad(int(total_entregados), pct_total_ent, col_planeado))
+    liberados_vals.append(crear_celda_cantidad(int(total_liberados), pct_total_lib, col_liberado))
 
     # Crear figura con columna adicional Entregados
     fig = go.Figure(data=[go.Table(
@@ -657,11 +660,15 @@ def crear_tabla_entregas_baysa(df: pd.DataFrame, config: dict) -> go.Figure:
             ],
             font=dict(color='#2C2C2C', size=13, family=font_family),
             align=['center', 'center', 'center', 'left', 'left'],
-            height=55,
+            height=75,
             line=dict(color='#E0E0E0', width=1)
         )
     )])
 
+    # Calcular altura dinámica: encabezado (45) + título (90) + margen inferior (30) + filas (incluyendo TOTAL)
+    num_filas = len(semanas_vals)  # Incluye la fila TOTAL
+    altura_calculada = 90 + 45 + (num_filas * 75) + 30
+    
     fig.update_layout(
         title=dict(
             text=f'<b>Plan de Entregas Pendientes - BAYSA</b><br><span style="font-size:12px; color:#666;">Dossieres Programados: {total_planeados} | Liberados: {total_liberados} ({pct_total_lib:.1f}%) | Entregados: {total_entregados} ({pct_total_ent:.1f}%) | Peso Total: {total_peso:,.0f} ton</span>',
@@ -670,7 +677,7 @@ def crear_tabla_entregas_baysa(df: pd.DataFrame, config: dict) -> go.Figure:
             font=dict(size=20, family=font_family, color='#2C2C2C')
         ),
         width=1300,
-        height=max(300, 150 + len(entregas) * 55),
+        height=altura_calculada,
         margin=dict(l=30, r=30, t=90, b=30),
         paper_bgcolor='white',
     )

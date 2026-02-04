@@ -297,6 +297,12 @@ else:
             "estatus": "",
             "entrega": ""
         }
+        # Resetear estado de widgets para que el panel refleje el limpiado
+        st.session_state["filtro_bloque"] = ""
+        st.session_state["filtro_etapa"] = ""
+        st.session_state["filtro_estatus"] = ""
+        if "filtro_entrega" in st.session_state:
+            st.session_state["filtro_entrega"] = ""
         st.rerun()
     fcol1, fcol2, fcol3, fcol4 = st.columns([1, 1, 1, 1])
     with fcol1:
