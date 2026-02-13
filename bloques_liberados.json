@@ -160,6 +160,11 @@
     "CONTRATISTA": "BAYSA"
   },
   {
+    "BLOQUE": "PRO_34",
+    "PESO": 116.01614,
+    "CONTRATISTA": "BAYSA"
+  },
+  {
     "BLOQUE": "PRO_35",
     "PESO": 69.99,
     "CONTRATISTA": "BAYSA"
@@ -220,6 +225,11 @@
     "CONTRATISTA": "BAYSA"
   },
   {
+    "BLOQUE": "PRO_51",
+    "PESO": 165.55292,
+    "CONTRATISTA": "BAYSA"
+  },
+  {
     "BLOQUE": "PRO_53",
     "PESO": 68.75549000000001,
     "CONTRATISTA": "BAYSA"
@@ -237,6 +247,11 @@
   {
     "BLOQUE": "PRO_57",
     "PESO": 58.58327,
+    "CONTRATISTA": "BAYSA"
+  },
+  {
+    "BLOQUE": "PRO_62",
+    "PESO": 84.7447,
     "CONTRATISTA": "BAYSA"
   },
   {
@@ -260,6 +275,11 @@
     "CONTRATISTA": "BAYSA"
   },
   {
+    "BLOQUE": "PRO_69",
+    "PESO": 117.55542999999999,
+    "CONTRATISTA": "BAYSA"
+  },
+  {
     "BLOQUE": "PRO_71",
     "PESO": 111.26162,
     "CONTRATISTA": "BAYSA"
@@ -270,8 +290,23 @@
     "CONTRATISTA": "BAYSA"
   },
   {
+    "BLOQUE": "PRO_73",
+    "PESO": 71.04012,
+    "CONTRATISTA": "BAYSA"
+  },
+  {
+    "BLOQUE": "PRO_74",
+    "PESO": 22.0672,
+    "CONTRATISTA": "BAYSA"
+  },
+  {
     "BLOQUE": "PRO_75",
     "PESO": 18.61043,
+    "CONTRATISTA": "BAYSA"
+  },
+  {
+    "BLOQUE": "PRO_76",
+    "PESO": 21.068,
     "CONTRATISTA": "BAYSA"
   },
   {
@@ -285,6 +320,11 @@
     "CONTRATISTA": "BAYSA"
   },
   {
+    "BLOQUE": "PRO_85",
+    "PESO": 85.97465,
+    "CONTRATISTA": "BAYSA"
+  },
+  {
     "BLOQUE": "PRO_87",
     "PESO": 30.77526,
     "CONTRATISTA": "BAYSA"
@@ -292,6 +332,11 @@
   {
     "BLOQUE": "PRO_88",
     "PESO": 37.79003,
+    "CONTRATISTA": "BAYSA"
+  },
+  {
+    "BLOQUE": "PRO_91",
+    "PESO": 93.4346,
     "CONTRATISTA": "BAYSA"
   },
   {
