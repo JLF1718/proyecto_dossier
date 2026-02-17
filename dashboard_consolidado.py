@@ -8,7 +8,7 @@ Combina datos de JAMAR y BAYSA para crear un dashboard consolidado.
 Uso:
     python dashboard_consolidado.py
 """
-
+from pathlib import Path
 import unicodedata
 import os
 import pandas as pd
@@ -1278,6 +1278,23 @@ def main():
     except Exception as e:
         print(f'⚠️ Error ejecutando exportar_bloques_liberados_json_html.py: {e}')
     return 0
+
+
+
+    # --- Export automático: Bloques Liberados (HTML/JSON) ---
+    out_dir = Path("output/exports")
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # OJO: usa el nombre REAL de tu dataframe consolidado:
+    # - Si tu variable se llama df, usa df
+    # - Si se llama df_consolidado, usa df_consolidado
+    df_base = df  # <-- cambia a df_consolidado si ese es el nombre correcto en tu main()
+
+    json_path, html_path = generar_bloques_liberados_html_json_desde_df(df_base, out_dir)
+
+    print(f"📄 Bloques liberados (HTML): {html_path}")
+    print(f"🧾 Bloques liberados (JSON): {json_path}")
+
 
 if __name__ == "__main__":
     sys.exit(main())
