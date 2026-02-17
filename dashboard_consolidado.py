@@ -9,6 +9,7 @@ Uso:
     python dashboard_consolidado.py
 """
 
+import unicodedata
 import os
 import pandas as pd
 import plotly.graph_objects as go
@@ -52,12 +53,70 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def _norm_txt(x: object) -> str:
+    """Trim + uppercase + quita acentos + colapsa espacios."""
+    s = "" if pd.isna(x) else str(x)
+    s = s.strip().upper()
+    s = unicodedata.normalize("NFD", s)
+    s = "".join(ch for ch in s if unicodedata.category(ch) != "Mn")  # sin acentos
+    s = re.sub(r"\s+", " ", s)
+    return s
+
+def normalizar_peso(df: pd.DataFrame) -> pd.DataFrame:
+    """Asegura PESO numérico (kg)."""
+    if 'PESO' in df.columns:
+        df['PESO'] = pd.to_numeric(df['PESO'], errors="coerce").fillna(0)
+    return df
+
+def normalizar_estatus(df: pd.DataFrame, config: dict) -> pd.DataFrame:
+    """
+    Canoniza ESTATUS usando config.yaml (sin hardcode):
+    Lee normalizacion_estatus del YAML y convierte alias -> canónico.
+    """
+    if 'ESTATUS' not in df.columns:
+        return df
+
+    mapa = config.get("normalizacion_estatus", {}) or {}
+
+    # Construir diccionario inverso alias->canon
+    alias_to_canon = {}
+    for canon, aliases in mapa.items():
+        if not aliases:
+            continue
+        for a in aliases:
+            key = _norm_txt(a).replace("-", " ").replace("_", " ")
+            key = re.sub(r"\s+", " ", key).strip()
+            alias_to_canon[key] = canon
+
+        canon_key = _norm_txt(canon).replace("-", " ").replace("_", " ")
+        canon_key = re.sub(r"\s+", " ", canon_key).strip()
+        alias_to_canon[canon_key] = canon
+
+    canon_default = "PLANEADO"
+
+    def canonizar(v: object) -> str:
+        t = _norm_txt(v).replace("-", " ").replace("_", " ")
+        t = re.sub(r"\s+", " ", t).strip()
+
+        if t in alias_to_canon:
+            return alias_to_canon[t]
+
+        # fallback: si trae "REV" y EN_REVISIÓN existe en el YAML
+        if "REV" in t and "EN_REVISIÓN" in mapa:
+            return "EN_REVISIÓN"
+
+        return canon_default
+
+    df['ESTATUS'] = df['ESTATUS'].apply(canonizar)
+    return df
+
 def cargar_configuracion(config_path: str = "config.yaml") -> dict:
     """Carga configuración desde YAML."""
     with open(config_path, 'r', encoding='utf-8') as f:
         return yaml.safe_load(f)
 
-def cargar_datos_consolidados() -> pd.DataFrame:
+def cargar_datos_consolidados(config: dict) -> pd.DataFrame:
+
     """Carga y combina datos normalizados de ambas contratistas."""
     
     archivos = {
@@ -105,6 +164,16 @@ def cargar_datos_consolidados() -> pd.DataFrame:
     
     logger.info(f"📊 Datos consolidados: {len(df_consolidado)} registros de {df_consolidado['CONTRATISTA'].nunique()} contratistas")
     
+        # Normalizaciones críticas (sin hardcode)
+    df_consolidado = normalizar_peso(df_consolidado)
+    df_consolidado = normalizar_estatus(df_consolidado, config)
+
+    # Log de control para validar EN_REVISIÓN
+    try:
+        logger.info(f"📌 Conteo por estatus (post-normalización): {df_consolidado['ESTATUS'].value_counts().to_dict()}")
+    except Exception:
+        pass
+
     return df_consolidado
 
 # Las funciones de cálculo de métricas ahora están en metricas_core.py
@@ -1042,11 +1111,9 @@ def main():
     crear_directorios(dirs)
 
     # Mostrar estadísticas consolidadas
-    df = cargar_datos_consolidados()
-    metricas = calcular_metricas_consolidadas(df)
-
-    # Cargar configuración
     config = cargar_configuracion()
+    df = cargar_datos_consolidados(config)
+    metricas = calcular_metricas_consolidadas(df)
 
     # Generar dashboard y tabla resumen
     fig_dashboard, fig_tabla_resumen = generar_dashboard_consolidado(df, config, semana_corte)
@@ -1084,7 +1151,9 @@ def main():
         # Crear tabla de entregas BAYSA
         fig_entregas = crear_tabla_entregas_baysa(df, config)
         # Crear gráfico de barras agrupadas BAYSA
-        fig_grafico = crear_grafico_etapa_estatus_baysa(df, config)
+        print(df_baysa.groupby(["ETAPA","ESTATUS"]).size())
+        fig_grafico = crear_grafico_etapa_estatus_baysa(df_baysa, config)
+
         # Exportar a HTML temporales
         temp_html1 = ruta_archivo.with_suffix('.temp1.html')
         temp_html2 = ruta_archivo.with_suffix('.temp2.html')
