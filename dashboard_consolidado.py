@@ -572,7 +572,7 @@ def crear_tabla_individual_contratista(df: pd.DataFrame, contratista: str, confi
     
     fig.update_layout(
         title=dict(
-            text=f'<b>Resumen Detallado - {contratista} (Semana: {semana_corte})</b><br><span style="font-size:12px; color:#666;">Total: {total} dossieres | Peso Total: {peso_total:,.0f} ton</span>',
+            text=f'<b>Resumen - {contratista} (Semana: {semana_corte})</b><br><span style="font-size:12px; color:#666;">Total: {total} dossieres | Peso Total: {peso_total:,.0f} ton</span>',
             x=0.5,
             xanchor='center',
             font=dict(size=20, family=font_family, color='#2C2C2C')
@@ -602,7 +602,6 @@ def crear_tabla_entregas_baysa(df: pd.DataFrame, config: dict) -> go.Figure:
             num_semana = int(codigo_semana.replace('S', ''))
             num_base = int(semana_base.replace('S', ''))
             diferencia_semanas = num_semana - num_base
-            
             fecha_base = datetime.strptime(fecha_inicio_base, "%Y-%m-%d")
             fecha_inicio = fecha_base + timedelta(weeks=diferencia_semanas)
             fecha_fin = fecha_inicio + timedelta(days=6)  # Sábado a viernes
