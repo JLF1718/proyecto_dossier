@@ -1211,15 +1211,15 @@ def main():
             f.write('</div>')
             f.write(nota_ejecutiva.replace('<div ', '<div class="nota-ejecutiva-panel" ', 1))
             f.write('</div>')
-            # Panel 2: Pending deliveries table
-            if tabla2_html:
-                f.write('<div class="baysa-panel"><div class="baysa-table">')
-                f.write(tabla2_html)
-                f.write('</div></div>')
-            # Panel 3: Gráfico de barras agrupadas
+             # Panel2: Gráfico de barras agrupadas
             if grafico_html:
                 f.write('<div class="baysa-panel"><div class="baysa-table">')
                 f.write(grafico_html)
+                f.write('</div></div>')
+            # Panel 3: Pending deliveries table
+            if tabla2_html:
+                f.write('<div class="baysa-panel"><div class="baysa-table">')
+                f.write(tabla2_html)
                 f.write('</div></div>')
             f.write('</div></body></html>')
         temp_html1.unlink(missing_ok=True)

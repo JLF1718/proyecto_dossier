@@ -34,15 +34,18 @@ def crear_grafico_etapa_estatus_baysa(df: pd.DataFrame, config: dict) -> go.Figu
 
     df = df.copy()
 
-    # --- Robustez mínima ---
+    # --- Robustez mínima (ETAPA) ---
+    # Regla:
+    # - INFO_GENERAL solo si ya viene en datos.
+    # - Vacíos / nulos -> SIN_ETAPA (calidad de datos)
     if "ETAPA" not in df.columns:
-        df["ETAPA"] = "INFO_GENERAL"
-    df["ETAPA"] = df["ETAPA"].fillna("INFO_GENERAL").astype(str)
-    df.loc[df["ETAPA"].str.strip() == "", "ETAPA"] = "INFO_GENERAL"
+        df["ETAPA"] = "SIN_ETAPA"
+    else:
+        df["ETAPA"] = df["ETAPA"].astype(str)
 
-    if "ESTATUS" not in df.columns:
-        df["ESTATUS"] = "PLANEADO"
-    df["ESTATUS"] = df["ESTATUS"].fillna("PLANEADO").astype(str)
+    df["ETAPA"] = df["ETAPA"].replace(["None", "nan", "NaN"], "").fillna("")
+    df.loc[df["ETAPA"].str.strip() == "", "ETAPA"] = "SIN_ETAPA"
+    df["ETAPA"] = df["ETAPA"].str.strip()
 
     # --- Pivot conteos ---
     pivot = (
@@ -65,6 +68,14 @@ def crear_grafico_etapa_estatus_baysa(df: pd.DataFrame, config: dict) -> go.Figu
     pct = (pivot.div(denom, axis=0).fillna(0) * 100)
 
     etapas = pivot.index.tolist()
+
+    # Mandar SIN_ETAPA al final si existe
+    if "SIN_ETAPA" in etapas:
+        etapas = [e for e in etapas if e != "SIN_ETAPA"] + ["SIN_ETAPA"]
+        pivot = pivot.reindex(etapas)
+        totals = pivot.sum(axis=1)
+        denom = totals.replace(0, pd.NA)
+        pct = (pivot.div(denom, axis=0).fillna(0) * 100)
 
     # --- Estilo / Config ---
     tipo = (dash_cfg.get("tipografia", {}) or {})
@@ -92,19 +103,21 @@ def crear_grafico_etapa_estatus_baysa(df: pd.DataFrame, config: dict) -> go.Figu
     fig = go.Figure()
 
     # --- TOTALES (gris) ---
+
     fig.add_trace(go.Bar(
         x=etapas,
         y=totals.astype(int).tolist(),
         name="TOTALES",
         marker=dict(color=col_total),
-        text=totals.astype(int).astype(str).tolist(),   # solo cantidad
+        text=[f"{int(v)}<br>100%" for v in totals.tolist()],  # <- aquí
         textposition="inside",
         textangle=0,
-        insidetextanchor="middle",
+        insidetextanchor="end",
         insidetextfont=dict(color="rgba(0,0,0,1)", size=12, family=font_family),
         hovertemplate="<b>%{x}</b><br>Total: %{y}<extra></extra>",
         cliponaxis=False,
     ))
+
 
     # --- Función interna (CORRECTAMENTE ANIDADA) ---
     def add_status_trace(key: str, display: str, color: str) -> bool:
@@ -189,7 +202,7 @@ def crear_grafico_etapa_estatus_baysa(df: pd.DataFrame, config: dict) -> go.Figu
         font=dict(family=font_family),
         legend=dict(orientation="h", yanchor="bottom", y=-0.22, xanchor="center", x=0.5),
         margin=dict(l=m_l, r=m_r, t=m_t, b=m_b, pad=m_pad),
-        xaxis=dict(title="Etapa", tickangle=0),
+        xaxis=dict(title=None, tickangle=0),
         yaxis=dict(visible=False, showticklabels=False, showgrid=False, zeroline=False, range=[0, ymax]),
     )
 
