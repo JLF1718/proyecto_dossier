@@ -426,7 +426,8 @@ def crear_tabla_resumen_ibcs(df: pd.DataFrame, config: dict, semana_corte: str =
             font=dict(size=18, family=font_family, color='#2C2C2C')  # Gris oscuro
         ),
         height=300,
-        margin=dict(l=30, r=30, t=80, b=30),
+        margin=dict(l=30, r=30, t=60, b=70, pad=0),
+
         paper_bgcolor='white'
     )
     
@@ -577,7 +578,8 @@ def crear_tabla_individual_contratista(df: pd.DataFrame, contratista: str, confi
             font=dict(size=20, family=font_family, color='#2C2C2C')
         ),
         height=320,
-        margin=dict(l=30, r=30, t=90, b=30),
+        margin=dict(l=30, r=30, t=60, b=70, pad=0),
+
         paper_bgcolor='white'
     )
     
@@ -747,7 +749,8 @@ def crear_tabla_entregas_baysa(df: pd.DataFrame, config: dict) -> go.Figure:
         ),
         width=1300,
         height=altura_calculada,
-        margin=dict(l=30, r=30, t=90, b=30),
+        margin=dict(l=30, r=30, t=60, b=70, pad=0),
+
         paper_bgcolor='white',
     )
     # Centrar la tabla en el HTML exportado (solo para PDF/HTML)
@@ -901,7 +904,7 @@ def crear_gantt_entregas_baysa(df: pd.DataFrame, config: dict) -> go.Figure:
             categoryarray=df_gantt['Bloque'].tolist()
         ),
         height=max(600, len(df_gantt) * 25),
-        margin=dict(l=100, r=50, t=100, b=80),
+        margin=dict(l=30, r=30, t=60, b=70, pad=0),
         paper_bgcolor='white',
         plot_bgcolor='#F8F9FA',
         barmode='overlay',
@@ -1067,7 +1070,8 @@ def generar_dashboard_consolidado(df: pd.DataFrame, config: dict, semana_corte: 
         paper_bgcolor=fondo_color,
         font=dict(family=font_family, size=tipo.get('etiquetas', 12), color=texto_principal),
         hovermode='closest',
-        margin=dict(l=100, r=100, t=200, b=100)
+        margin=dict(l=30, r=30, t=60, b=70, pad=0),
+
     )
     
     # Actualizar ejes
