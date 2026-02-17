@@ -1151,7 +1151,7 @@ def main():
         # Crear tabla de entregas BAYSA
         fig_entregas = crear_tabla_entregas_baysa(df, config)
         # Crear gráfico de barras agrupadas BAYSA
-        print(df_baysa.groupby(["ETAPA","ESTATUS"]).size())
+        # IMPORTANTE: pasar df_baysa, no df
         fig_grafico = crear_grafico_etapa_estatus_baysa(df_baysa, config)
 
         # Exportar a HTML temporales

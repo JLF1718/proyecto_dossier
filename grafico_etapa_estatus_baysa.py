@@ -2,25 +2,13 @@
 import pandas as pd
 import plotly.graph_objects as go
 
-def crear_grafico_etapa_estatus_baysa(df: pd.DataFrame, config: dict, contratista: str = "BAYSA") -> go.Figure:
-    """
-    Gráfico de barras agrupadas: Totales vs Estatus por ETAPA.
-    Diseñado para consumir ESTATUS ya CANONIZADO (LIBERADO/OBSERVADO/EN_REVISIÓN/PLANEADO).
-    """
-
-    if df is None or len(df) == 0:
+def crear_grafico_etapa_estatus_baysa(df: pd.DataFrame, config: dict) -> go.Figure:
+    if df is None or df.empty:
         return None
 
     df = df.copy()
 
-    # Si viene consolidado, filtra por contratista; si ya viene filtrado, no afecta
-    if "CONTRATISTA" in df.columns:
-        df = df[df["CONTRATISTA"] == contratista].copy()
-
-    if df.empty:
-        return None
-
-    # Normalizar columnas mínimas (por robustez)
+    # Robustez mínima
     if "ETAPA" not in df.columns:
         df["ETAPA"] = "INFO_GENERAL"
     df["ETAPA"] = df["ETAPA"].fillna("INFO_GENERAL").astype(str)
@@ -30,23 +18,25 @@ def crear_grafico_etapa_estatus_baysa(df: pd.DataFrame, config: dict, contratist
         df["ESTATUS"] = "PLANEADO"
     df["ESTATUS"] = df["ESTATUS"].fillna("PLANEADO").astype(str)
 
-    # Pivot conteos por ETAPA y ESTATUS
+    # Pivot conteos
     pivot = (
         df.groupby(["ETAPA", "ESTATUS"], dropna=False)
           .size()
           .unstack(fill_value=0)
     )
 
-    # Orden canónico (clave interna = exactamente como tu df normalizado)
-    status_order = ["LIBERADO", "OBSERVADO", "EN_REVISIÓN", "PLANEADO"]
+    # Orden canónico (CLAVES EXACTAS)
+    status_order = (
+    (config.get("dashboard", {}) or {}).get("status_order")
+    or ["LIBERADO", "OBSERVADO", "EN_REVISIÓN", "PLANEADO"]
+)
+
     for s in status_order:
         if s not in pivot.columns:
             pivot[s] = 0
     pivot = pivot[status_order]
 
     totals = pivot.sum(axis=1)
-
-    # % por etapa (para etiquetas)
     denom = totals.replace(0, pd.NA)
     pct = (pivot.div(denom, axis=0).fillna(0) * 100)
 
@@ -57,23 +47,22 @@ def crear_grafico_etapa_estatus_baysa(df: pd.DataFrame, config: dict, contratist
     font_family = tipo.get("familia_principal", "Segoe UI, Arial, sans-serif")
 
     colores = config.get("colores", {}) or {}
-    col_total = "#D9D9D9"
+    col_total = colores.get("TOTALES", "#D9D9D9")
     col_liberado = colores.get("LIBERADO", "#0F7C3F")
     col_obs = colores.get("OBSERVADO", "#D0021B")
-    col_rev = colores.get("EN_REVISIÓN", "#F5A623")
+    col_rev = colores.get("EN_REVISIÓN", "#F5A623")   # <- toma tu YAML
     col_plan = colores.get("PLANEADO", "#808080")
 
     fig = go.Figure()
 
-    # Totales (gris, detrás)
+    # Totales (gris, atrás)
     fig.add_trace(go.Bar(
         x=etapas,
         y=totals.tolist(),
         name="TOTALES",
         marker=dict(color=col_total),
         opacity=0.35,
-        text=[f"<b><span style='color:black'>{int(v)}</span></b><br><b><span style='color:black'>100%</span></b>"
-              for v in totals.tolist()],
+        text=[f"{int(v)}<br>100%" for v in totals.tolist()],
         textposition="outside",
         textfont=dict(color="black", size=13),
         hovertemplate="<b>%{x}</b><br>Total: %{y}<extra></extra>"
@@ -95,15 +84,13 @@ def crear_grafico_etapa_estatus_baysa(df: pd.DataFrame, config: dict, contratist
 
     add_status_trace("LIBERADO", "LIBERADO", col_liberado)
     add_status_trace("OBSERVADO", "OBSERVADO", col_obs)
-    # OJO: clave interna EN_REVISIÓN, etiqueta visible "EN REVISIÓN"
-    add_status_trace("EN_REVISIÓN", "EN REVISIÓN", col_rev)
+    add_status_trace("EN_REVISIÓN", "EN REVISIÓN", col_rev)  # <- AQUÍ ya no hay “0”
     add_status_trace("PLANEADO", "PLANEADO", col_plan)
 
-    # Layout
     ymax = max(float(totals.max()) * 1.20, 1.0)
 
     fig.update_layout(
-        title=dict(text=f"<b>Dossieres por Etapa y Estatus - {contratista}</b>", x=0.5, xanchor="center"),
+        title=dict(text="<b>Dossieres por Etapa y Estatus - BAYSA</b>", x=0.5, xanchor="center"),
         barmode="group",
         bargap=0.18,
         height=400,
