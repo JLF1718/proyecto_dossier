@@ -1071,7 +1071,9 @@ def main():
         df_consolidado=df
     )
 
-    # Exportar tabla ejecutiva BAYSA (visualización IBCS + Nota Ejecutiva)
+
+    # Exportar tabla ejecutiva y gráfico BAYSA
+    from grafico_etapa_estatus_baysa import crear_grafico_etapa_estatus_baysa
     df_baysa = df[df['CONTRATISTA'] == 'BAYSA']
     if not df_baysa.empty:
         timestamp_simple = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1081,13 +1083,18 @@ def main():
         fig_baysa = crear_tabla_individual_contratista(df, 'BAYSA', config, semana_corte)
         # Crear tabla de entregas BAYSA
         fig_entregas = crear_tabla_entregas_baysa(df, config)
-        # Exportar ambas tablas a HTML temporales (side by side, no scroll, auto height)
+        # Crear gráfico de barras agrupadas BAYSA
+        fig_grafico = crear_grafico_etapa_estatus_baysa(df, config)
+        # Exportar a HTML temporales
         temp_html1 = ruta_archivo.with_suffix('.temp1.html')
         temp_html2 = ruta_archivo.with_suffix('.temp2.html')
+        temp_html3 = ruta_archivo.with_suffix('.temp3.html')
         fig_baysa.write_html(str(temp_html1), include_plotlyjs='cdn', full_html=False, config={"displayModeBar": False, "staticPlot": True})
         if fig_entregas is not None:
             fig_entregas.write_html(str(temp_html2), include_plotlyjs=False, full_html=False, config={"displayModeBar": False, "staticPlot": True})
-        # Nota Ejecutiva HTML (style matches provided image)
+        if fig_grafico is not None:
+            fig_grafico.write_html(str(temp_html3), include_plotlyjs=False, full_html=False, config={"displayModeBar": False, "staticPlot": True})
+        # Nota Ejecutiva HTML
         nota_ejecutiva = '''
         <div style="background:#FFF6EA; border-left:4px solid #F6A623; padding:10px 18px; margin:12px 0 18px 0; font-family:Segoe UI,Arial,sans-serif;">
             <span style="font-size:17px; font-weight:bold; color:#E67C00; vertical-align:middle; display:inline-block;">
@@ -1098,7 +1105,6 @@ def main():
             </div>
         </div>
         '''
-        # Encabezado HTML personalizado
         encabezado = f'''
         <div style="text-align:center; margin-top:24px; margin-bottom:8px;">
             <span style="font-size:2.1em; font-weight:bold; color:#222; font-family:Segoe UI,Arial,sans-serif; vertical-align:middle;">
@@ -1114,14 +1120,18 @@ def main():
         if fig_entregas is not None:
             with open(temp_html2, encoding='utf-8') as f:
                 tabla2_html = f.read()
-        # Unir todo y exportar (nota debajo de la tabla, menos espacio inferior)
+        grafico_html = ''
+        if fig_grafico is not None:
+            with open(temp_html3, encoding='utf-8') as f:
+                grafico_html = f.read()
+        # Unir todo y exportar
         with open(ruta_archivo, 'w', encoding='utf-8') as f:
             f.write('<html><head><meta charset="utf-8"><title>Análisis Completo BAYSA</title>')
             f.write('<style>body{background:#fafbfc;} .baysa-panel{max-width:1200px;margin:0 auto 6px auto;padding:0 0 0 0;background:#fff;border-radius:10px;box-shadow:0 2px 8px #0001;overflow:hidden;} .baysa-table{padding:18px 18px 0 18px; min-width:1050px; max-width:1150px;} .nota-ejecutiva-panel{margin:0;padding:0;border-radius:0 0 10px 10px;} .baysa-table .js-plotly-plot {overflow:visible!important;pointer-events:none!important;} .baysa-table .js-plotly-plot .main-svg {pointer-events:none!important;} </style>')
             f.write('</head><body>')
             f.write(encabezado)
             f.write('<div style="max-width:1200px; margin:0 auto;">')
-            # Panel 1: Executive summary table + note inside panel, flush bottom
+            # Panel 1: Executive summary table + note inside panel
             f.write('<div class="baysa-panel">')
             f.write('<div class="baysa-table">')
             f.write(tabla1_html)
@@ -1133,11 +1143,18 @@ def main():
                 f.write('<div class="baysa-panel"><div class="baysa-table">')
                 f.write(tabla2_html)
                 f.write('</div></div>')
+            # Panel 3: Gráfico de barras agrupadas
+            if grafico_html:
+                f.write('<div class="baysa-panel"><div class="baysa-table">')
+                f.write(grafico_html)
+                f.write('</div></div>')
             f.write('</div></body></html>')
         temp_html1.unlink(missing_ok=True)
         if temp_html2.exists():
             temp_html2.unlink(missing_ok=True)
-        print(f"✅ Tabla ejecutiva BAYSA generada: {ruta_archivo}")
+        if temp_html3.exists():
+            temp_html3.unlink(missing_ok=True)
+        print(f"✅ Tabla ejecutiva y gráfico BAYSA generados: {ruta_archivo}")
 
     print(f"{'='*60}")
     print("📋 RESUMEN CONSOLIDADO")
