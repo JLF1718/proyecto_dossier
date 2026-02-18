@@ -21,6 +21,7 @@ import logging
 import sys
 from typing import Tuple
 import re
+import json
 
 # Importar funciones core de métricas (ÚNICA FUENTE DE VERDAD)
 from metricas_core import (
@@ -52,6 +53,132 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+def generar_bloques_liberados_html_json_desde_df(df: pd.DataFrame, out_dir: Path) -> tuple[Path, Path]:
+    """
+    Genera:
+      - output/exports/bloques_liberados.json
+      - output/exports/bloques_liberados.html
+
+    Columnas en HTML: Contratista | Etapa | Bloque | Peso (ton)
+    Agrega fila final: TOTALES | <conteo_etapas> | <conteo_bloques> | <suma_peso_ton>
+    """
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    req = {"ESTATUS", "BLOQUE", "PESO", "CONTRATISTA", "ETAPA"}
+    faltantes = sorted(list(req - set(df.columns)))
+    if faltantes:
+        raise ValueError(f"Faltan columnas requeridas para exportar bloques liberados: {faltantes}")
+
+    # --- Base liberados ---
+    dfx = df.copy()
+    dfx["PESO"] = pd.to_numeric(dfx["PESO"], errors="coerce").fillna(0)
+
+    liberados = dfx[dfx["ESTATUS"] == "LIBERADO"][["CONTRATISTA", "ETAPA", "BLOQUE", "PESO"]].copy()
+
+    # Agrupa por bloque para evitar duplicados por filas (robusto)
+    liberados = (
+        liberados
+        .groupby(["CONTRATISTA", "ETAPA", "BLOQUE"], as_index=False)["PESO"]
+        .sum()
+    )
+
+    # --- Normalizar ETAPA a formato canónico ETAPA_01..ETAPA_99 / SIN_ETAPA ---
+    def canon_etapa(v: object) -> str:
+        s = "" if pd.isna(v) else str(v)
+        s = s.strip().upper().replace(" ", "_").replace("-", "_")
+        if not s or s in {"NAN", "NONE"}:
+            return "SIN_ETAPA"
+        if "SIN" in s and "ETAPA" in s:
+            return "SIN_ETAPA"
+        m = re.search(r"(\d{1,2})", s)
+        if m:
+            return f"ETAPA_{int(m.group(1)):02d}"
+        return s
+
+    liberados["ETAPA"] = liberados["ETAPA"].apply(canon_etapa)
+
+    # Convierte a ton (asumiendo que PESO viene en kg)
+    liberados["PESO"] = liberados["PESO"] / 1000.0
+
+    # Orden (opcional pero profesional): Contratista, Etapa, Bloque
+    liberados = liberados.sort_values(["CONTRATISTA", "ETAPA", "BLOQUE"], kind="stable").reset_index(drop=True)
+
+    # --- Totales ---
+    total_bloques = int(len(liberados))
+    total_peso_ton = float(liberados["PESO"].sum())
+
+    # --- Conteo etapas (ya en canónico) ---
+    etapas_set = set(liberados["ETAPA"].astype(str).tolist())
+
+    # Cuenta ETAPA_01..ETAPA_04 (ajusta rango si luego agregas más etapas)
+    conteo_etapas = sum(1 for n in range(1, 5) if f"ETAPA_{n:02d}" in etapas_set)
+    if "SIN_ETAPA" in etapas_set:
+        conteo_etapas += 1
+
+    # --- JSON ---
+    json_path = out_dir / "bloques_liberados.json"
+    json_data = liberados.to_dict(orient="records")
+    json_path.write_text(json.dumps(json_data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    # --- HTML (fila TOTALES al final, SIEMPRE) ---
+    def fila_html(contratista: str, etapa: str, bloque: str, peso: float, cls: str = "") -> str:
+        c = f" class='{cls}'" if cls else ""
+        return f"<tr{c}><td>{contratista}</td><td>{etapa}</td><td>{bloque}</td><td>{peso:.2f}</td></tr>"
+
+    rows = []
+    for r in liberados.itertuples(index=False):
+        rows.append(fila_html(str(r.CONTRATISTA), str(r.ETAPA), str(r.BLOQUE), float(r.PESO)))
+
+    # Fila final: TOTALES (al final del tbody)
+    rows.append(fila_html("TOTALES", str(conteo_etapas), str(total_bloques), total_peso_ton, cls="totales"))
+
+    html = f"""<!DOCTYPE html>
+<html lang='es'>
+<head>
+  <meta charset='UTF-8'>
+  <title>Lista de Bloques Liberados</title>
+  <style>
+    body {{ font-family: Segoe UI, Arial, sans-serif; background: #fafbfc; margin: 0; padding: 0; }}
+    .container {{ max-width: 980px; margin: 40px auto; background: #fff; border-radius: 10px;
+                 box-shadow: 0 2px 8px rgba(0,0,0,0.07); padding: 32px; }}
+    h1 {{ text-align: center; margin-bottom: 0.2em; }}
+    .total {{ text-align: center; font-size: 1.05em; margin-bottom: 1.5em; color: #0F7C3F; }}
+    table {{ width: 100%; border-collapse: collapse; margin-bottom: 0.5em; }}
+    th, td {{ border: 1px solid #ddd; padding: 8px 12px; text-align: center; }}
+    th {{ background: #4A4A4A; color: #fff; font-size: 1.0em; }}
+    tr:nth-child(even) {{ background: #f8f9fa; }}
+    tr.totales td {{ font-weight: 700; background: #FFF6EA; border-top: 2px solid #F6A623; }}
+  </style>
+</head>
+<body>
+  <div class='container'>
+    <h1>Lista de Bloques Liberados</h1>
+    <div class='total'>Total de bloques liberados: <b>{total_bloques}</b></div>
+
+    <table id='tabla-bloques'>
+      <thead>
+        <tr>
+          <th>Contratista</th>
+          <th>Etapa</th>
+          <th>Bloque</th>
+          <th>Peso (ton)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {"".join(rows)}
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>
+"""
+    html_path = out_dir / "bloques_liberados.html"
+    html_path.write_text(html, encoding="utf-8")
+
+    return json_path, html_path
+
 
 def _norm_txt(x: object) -> str:
     """Trim + uppercase + quita acentos + colapsa espacios."""
@@ -1265,36 +1392,119 @@ def main():
     except Exception as e:
         print(f"Error actualizando bloques_liberados.md: {e}")
     # Al final de main, actualizar bloques_liberados.html
-    import subprocess, sys, os
-    script_path = os.path.join(os.path.dirname(__file__), 'scripts', 'exportar_bloques_liberados_json_html.py')
-    try:
-        result = subprocess.run([sys.executable, script_path], capture_output=True, text=True, encoding='utf-8')
-        if result.returncode == 0:
-            print('✅ bloques_liberados.html actualizado correctamente.')
-        else:
-            print('⚠️ Error actualizando bloques_liberados.html:')
-            print(result.stdout)
-            print(result.stderr)
-    except Exception as e:
-        print(f'⚠️ Error ejecutando exportar_bloques_liberados_json_html.py: {e}')
-    return 0
-
-
-
     # --- Export automático: Bloques Liberados (HTML/JSON) ---
-    out_dir = Path("output/exports")
-    out_dir.mkdir(parents=True, exist_ok=True)
+    # --- Export automático: Bloques Liberados (HTML/JSON) + ASSERTS ---
+    # --- Export automático: Bloques Liberados (HTML/JSON) + ASSERTS ---
+    # --- Export automático: Bloques Liberados (HTML/JSON) + ASSERTS ---
+    try:
+        exports_dir = output_dir / "exports"
+        json_path, html_path = generar_bloques_liberados_html_json_desde_df(df, exports_dir)
+        print(f"✅ bloques_liberados.html actualizado: {html_path}")
+        print(f"✅ bloques_liberados.json actualizado: {json_path}")
 
-    # OJO: usa el nombre REAL de tu dataframe consolidado:
-    # - Si tu variable se llama df, usa df
-    # - Si se llama df_consolidado, usa df_consolidado
-    df_base = df  # <-- cambia a df_consolidado si ese es el nombre correcto en tu main()
+        # ===== ASSERTS (control de integridad) =====
+        def _assert(cond: bool, msg: str):
+            if not cond:
+                raise AssertionError(msg)
 
-    json_path, html_path = generar_bloques_liberados_html_json_desde_df(df_base, out_dir)
+        import re as _re
 
-    print(f"📄 Bloques liberados (HTML): {html_path}")
-    print(f"🧾 Bloques liberados (JSON): {json_path}")
+        def _canon_etapa(v: object) -> str:
+            """
+            Canoniza ETAPA:
+            - Acepta ETAPA_1, ETAPA-1, ETAPA 1, ETAPA_01 -> ETAPA_01
+            - SIN_ETAPA -> SIN_ETAPA
+            """
+            t = "" if pd.isna(v) else str(v)
+            t = t.strip().upper().replace(" ", "_").replace("-", "_")
+            if not t:
+                return ""
+            if t in {"SIN_ETAPA", "SINETAPA", "NA", "N/A"}:
+                return "SIN_ETAPA"
+            m = _re.match(r"^ETAPA_?(\d+)$", t)
+            if m:
+                return f"ETAPA_{int(m.group(1)):02d}"
+            return t
 
+        def _calc_expected(df_: pd.DataFrame):
+            dfx = df_.copy()
+            dfx["PESO"] = pd.to_numeric(dfx["PESO"], errors="coerce").fillna(0)
+
+            lib = dfx[dfx["ESTATUS"] == "LIBERADO"][["CONTRATISTA", "ETAPA", "BLOQUE", "PESO"]].copy()
+            lib = (
+                lib.groupby(["CONTRATISTA", "ETAPA", "BLOQUE"], as_index=False)["PESO"]
+                .sum()
+            )
+
+            # kg -> ton
+            lib["PESO"] = lib["PESO"] / 1000.0
+
+            etapas_set = { _canon_etapa(x) for x in lib["ETAPA"].tolist() }
+            etapas_set.discard("")  # quita vacíos
+
+            conteo_etapas = int(len(etapas_set))
+            total_bloques = int(len(lib))
+            total_peso = float(lib["PESO"].sum())
+            return total_bloques, total_peso, etapas_set, conteo_etapas
+
+        exp_bloques, exp_peso, exp_etapas_set, exp_conteo_etapas = _calc_expected(df)
+
+        # --- Validación HTML: fila final TOTALES ---
+        import pathlib
+        s = pathlib.Path(html_path).read_text(encoding="utf-8")
+
+        rows = _re.findall(r"<tr[^>]*>.*?</tr>", s, flags=_re.S | _re.I)
+        _assert(len(rows) > 0, "bloques_liberados.html no contiene filas <tr>.")
+
+        last = _re.sub(r"\s+", " ", rows[-1]).strip()
+
+        m = _re.search(
+            r"<td>\s*TOTALES\s*</td>\s*"
+            r"<td>\s*([0-9]+)\s*</td>\s*"
+            r"<td>\s*([0-9]+)\s*</td>\s*"
+            r"<td>\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*</td>",
+            last,
+            flags=_re.I
+        )
+        _assert(m is not None, f"Fila TOTALES no encontrada o formato inesperado. last_row={last}")
+
+        got_etapas = int(m.group(1))
+        got_bloques = int(m.group(2))
+        got_peso = float(m.group(3).replace(",", ""))
+
+        _assert(got_etapas == exp_conteo_etapas, f"ETAPAS mismatch (HTML): html={got_etapas} vs esperado={exp_conteo_etapas}")
+        _assert(got_bloques == exp_bloques, f"BLOQUES mismatch (HTML): html={got_bloques} vs esperado={exp_bloques}")
+        _assert(abs(got_peso - exp_peso) <= 0.02, f"PESO mismatch (HTML): html={got_peso:.2f} vs esperado={exp_peso:.2f}")
+
+        # --- Validación JSON: etapas + conteo + peso ---
+        import json
+        data = json.loads(pathlib.Path(json_path).read_text(encoding="utf-8"))
+        _assert(isinstance(data, list) and len(data) > 0, "bloques_liberados.json está vacío o no es una lista.")
+
+        got_etapas_set = { _canon_etapa(x.get("ETAPA", "")) for x in data }
+        got_etapas_set.discard("")
+
+        _assert(got_etapas_set == exp_etapas_set,
+                f"ETAPAS mismatch (JSON): {sorted(got_etapas_set)} vs esperado {sorted(exp_etapas_set)}")
+
+        _assert(len(data) == exp_bloques, f"Conteo registros JSON mismatch: json={len(data)} vs esperado={exp_bloques}")
+
+        got_peso_json = sum(float(x.get("PESO", 0) or 0) for x in data)
+        _assert(abs(got_peso_json - exp_peso) <= 0.02, f"PESO mismatch (JSON): json={got_peso_json:.2f} vs esperado={exp_peso:.2f}")
+
+        # --- Consistencia con resumen global (opcional) ---
+        try:
+            resumen_liberados = int(metricas.get("dossiers_liberados", exp_bloques))
+            _assert(exp_bloques == resumen_liberados,
+                    f"Liberados (resumen) vs Bloques liberados difieren: resumen={resumen_liberados} vs bloques={exp_bloques}")
+        except Exception:
+            pass
+
+        print("✅ ASSERT OK: Export 'bloques_liberados' consistente (HTML/JSON vs dataframe).")
+
+    except Exception as e:
+        print(f"❌ ASSERT/EXPORT falló en bloques_liberados (HTML/JSON): {e}")
+        return 1
 
 if __name__ == "__main__":
     sys.exit(main())
