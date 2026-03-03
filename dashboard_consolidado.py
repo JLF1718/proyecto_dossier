@@ -1300,7 +1300,8 @@ def main():
                 <span style="font-size:1.3em; margin-right:7px; vertical-align:middle;">&#9888;</span> Nota Ejecutiva: Observaciones Críticas
             </span>
             <div style="font-size:14px; color:#222; margin-top:2px;">
-            Las observaciones identificadas en la columna OBSERVADO se concentran principalmente en tres categorías críticas para la trazabilidad del dossier: <b>TOPOGRAFÍA</b>, <b>PLANOS AS-BUILT</b> y <b>PRODUCTO TERMINADO</b>. La ausencia de estas secciones compromete directamente la verificación de trazabilidad y cumplimiento normativo, representando un riesgo de no conformidad en auditorías y revisiones de calidad.
+            <p style="margin:0 0 8px 0;">Las observaciones identificadas en la columna OBSERVADO se concentran principalmente en tres categorías críticas para la trazabilidad del dossier: <b>TOPOGRAFÍA</b>, <b>PLANOS AS-BUILT</b> y <b>PRODUCTO TERMINADO</b>. La ausencia de estas secciones compromete directamente la verificación de trazabilidad y cumplimiento normativo, representando un riesgo de no conformidad en auditorías y revisiones de calidad.</p>
+            <p style="margin:0;"><b>Peso (ton):</b> El indicador registra el peso total del bloque, pendiente la homologación de entregas parciales una vez se integren los registros del dossier para asegurar la integridad metrológica de la medición.</p>
             </div>
         </div>
         '''

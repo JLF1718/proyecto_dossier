@@ -192,7 +192,7 @@ def crear_grafico_etapa_estatus_baysa(df: pd.DataFrame, config: dict) -> go.Figu
 
     fig.update_layout(
         title=dict(
-            text="<b>Resumen por Etapa - BAYSA</b>",
+            text="<b>Resumen de Conteo por Etapa - BAYSA</b>",
             x=0.5,
             xanchor="center",
             font=dict(size=int(tipo.get("titulo_panel", 20)), family=font_family, color="#2C2C2C"),
