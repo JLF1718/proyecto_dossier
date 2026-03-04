@@ -40,6 +40,8 @@ class Colors:
 
 def print_header(text: str):
     """Imprime encabezado bonito."""
+    # Remover emojis para compatibilidad con Windows
+    text = text.replace('📊', '[DASHBOARD]').replace('🌐', '[WEB]').replace('✅', '[OK]')
     print(f"\n{Colors.CYAN}{'='*60}")
     print(f"{text}")
     print(f"{'='*60}{Colors.RESET}\n")
@@ -47,27 +49,27 @@ def print_header(text: str):
 
 def print_success(text: str):
     """Imprime mensaje de éxito."""
-    print(f"{Colors.GREEN}✅ {text}{Colors.RESET}")
+    print(f"{Colors.GREEN}[OK] {text}{Colors.RESET}")
 
 
 def print_error(text: str):
     """Imprime mensaje de error."""
-    print(f"{Colors.RED}❌ {text}{Colors.RESET}")
+    print(f"{Colors.RED}[ERROR] {text}{Colors.RESET}")
 
 
 def print_info(text: str):
     """Imprime mensaje informativo."""
-    print(f"{Colors.BLUE}ℹ️  {text}{Colors.RESET}")
+    print(f"{Colors.BLUE}[INFO] {text}{Colors.RESET}")
 
 
 def print_warning(text: str):
     """Imprime advertencia."""
-    print(f"{Colors.YELLOW}⚠️  {text}{Colors.RESET}")
+    print(f"{Colors.YELLOW}[WARN] {text}{Colors.RESET}")
 
 
 def cmd_run(args):
     """Ejecuta la app Streamlit."""
-    print_header("🌐 ABRIENDO APP - CONTROL DE DOSSIERES")
+    print_header("[WEB] ABRIENDO APP - CONTROL DE DOSSIERES")
     
     app_file = APP_DIR / "streamlit_app.py"
     
@@ -107,7 +109,7 @@ def cmd_generate(args):
         print_info("Debe ser S### (ej: S186, S1, S1020)")
         sys.exit(1)
     
-    print_header(f"📊 GENERANDO DASHBOARDS PARA {semana}")
+    print_header(f"[DASHBOARD] GENERANDO DASHBOARDS PARA {semana}")
     
     # Ejecutar generador de dashboards
     generar_script = SCRIPTS_DIR / "cli_generar.py"
@@ -144,7 +146,7 @@ def cmd_generate(args):
 
 def cmd_validate(args):
     """Valida la integridad del proyecto."""
-    print_header("✅ VALIDANDO INTEGRIDAD DEL PROYECTO")
+    print_header("[OK] VALIDANDO INTEGRIDAD DEL PROYECTO")
     
     validar_script = MAINTENANCE_DIR / "validar_integridad.py"
     
@@ -167,7 +169,7 @@ def cmd_validate(args):
 
 def cmd_status(args):
     """Muestra estado rápido del proyecto."""
-    print_header("📊 ESTADO DEL PROYECTO")
+    print_header("[STATUS] ESTADO DEL PROYECTO")
     
     # Verificar carpetas críticas
     print_info("Verificando estructura...")
@@ -175,7 +177,7 @@ def cmd_status(args):
     checks = {
         "App": APP_DIR / "streamlit_app.py",
         "Core (Métricas)": PROJECT_ROOT / "core" / "metricas.py",
-        "Generators": SCRIPTS_DIR / "cli_generar.py",
+        "Generators": PROJECT_ROOT / "generators" / "dashboard_generator.py",
         "Data/BAYSA": PROJECT_ROOT / "data" / "contratistas" / "BAYSA" / "ctrl_dosieres_BAYSA_normalizado.csv",
         "Data/JAMAR": PROJECT_ROOT / "data" / "contratistas" / "JAMAR" / "ctrl_dosieres_JAMAR_normalizado.csv",
         "Output": PROJECT_ROOT / "output",
