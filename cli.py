@@ -113,19 +113,17 @@ def cmd_generate(args):
     
     # Ejecutar generador de dashboards
     generar_script = SCRIPTS_DIR / "cli_generar.py"
-    
+    usar_legacy = False
+
     if not generar_script.exists():
-        # Fallback: ejecutar generar_todos_dashboards.py si aún existe
         print_warning("Usando generador legacy (generar_todos_dashboards.py)")
-        generar_script = PROJECT_ROOT / "generar_todos_dashboards.py"
-    
-    if not generar_script.exists():
-        print_error(f"Generador no encontrado: {generar_script}")
-        sys.exit(1)
+        usar_legacy = True
     
     try:
         # Pasar la semana como argumento
-        cmd = [sys.executable, str(generar_script), semana]
+        cmd = [sys.executable, "-m", "scripts.cli_generar", semana]
+        if usar_legacy:
+            cmd = [sys.executable, str(PROJECT_ROOT / "generar_todos_dashboards.py"), semana]
         env = os.environ.copy()
         env["PYTHONIOENCODING"] = "utf-8"
         env["SEMANA_CORTE"] = semana
@@ -149,18 +147,19 @@ def cmd_validate(args):
     print_header("[OK] VALIDANDO INTEGRIDAD DEL PROYECTO")
     
     validar_script = MAINTENANCE_DIR / "validar_integridad.py"
-    
-    if not validar_script.exists():
-        # Fallback a validar_proyecto.py
+    usar_legacy = not validar_script.exists()
+
+    if usar_legacy:
         print_warning("Usando validador legacy (validar_proyecto.py)")
-        validar_script = PROJECT_ROOT / "validar_proyecto.py"
-    
-    if not validar_script.exists():
-        print_error(f"Validador no encontrado: {validar_script}")
+
+    if usar_legacy and not (PROJECT_ROOT / "validar_proyecto.py").exists():
+        print_error(f"Validador no encontrado: {PROJECT_ROOT / 'validar_proyecto.py'}")
         sys.exit(1)
     
     try:
-        cmd = [sys.executable, str(validar_script)]
+        cmd = [sys.executable, "-m", "scripts.maintenance.validar_integridad"]
+        if usar_legacy:
+            cmd = [sys.executable, str(PROJECT_ROOT / "validar_proyecto.py")]
         subprocess.run(cmd, cwd=str(PROJECT_ROOT))
     except Exception as e:
         print_error(f"Error: {e}")
@@ -240,7 +239,7 @@ def cmd_backup(args):
         sys.exit(1)
     
     try:
-        cmd = [sys.executable, str(backup_script)]
+        cmd = [sys.executable, "-m", "scripts.maintenance.backup_helper"]
         subprocess.run(cmd, cwd=str(PROJECT_ROOT))
     except Exception as e:
         print_error(f"Error: {e}")

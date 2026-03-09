@@ -24,21 +24,41 @@ import re
 import json
 
 # Importar funciones core de métricas (ÚNICA FUENTE DE VERDAD)
-from core.metricas import (
-    calcular_metricas_consolidadas,
-    calcular_peso_liberado,
-    validar_consistencia_metricas,
-    imprimir_metricas
-)
+# Compatible tanto al ejecutar como módulo (-m) como script directo.
+try:
+    from core.metricas import (
+        calcular_metricas_consolidadas,
+        calcular_peso_liberado,
+        validar_consistencia_metricas,
+        imprimir_metricas
+    )
 
-# Importar utilidades comunes
-from generators.utils_generator import (
-    obtener_estructura_directorios,
-    crear_directorios,
-    solicitar_semana,
-    guardar_archivos_consolidados,
-    mostrar_resumen_archivos
-)
+    from generators.utils_generator import (
+        obtener_estructura_directorios,
+        crear_directorios,
+        solicitar_semana,
+        guardar_archivos_consolidados,
+        mostrar_resumen_archivos
+    )
+except ModuleNotFoundError:
+    PROJECT_ROOT = Path(__file__).resolve().parents[1]
+    if str(PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT))
+
+    from core.metricas import (
+        calcular_metricas_consolidadas,
+        calcular_peso_liberado,
+        validar_consistencia_metricas,
+        imprimir_metricas
+    )
+
+    from generators.utils_generator import (
+        obtener_estructura_directorios,
+        crear_directorios,
+        solicitar_semana,
+        guardar_archivos_consolidados,
+        mostrar_resumen_archivos
+    )
 
 # ====== BLINDAJE UTF-8 (colócalo AQUÍ) ======
 try:
@@ -1387,8 +1407,8 @@ def main():
     try:
         import subprocess, sys
         print("\nActualizando bloques_liberados.md...")
-        subprocess.run([sys.executable, "scripts/exportar_bloques_liberados.py"], check=True)
-        subprocess.run([sys.executable, "scripts/limpiar_md_bloques.py"], check=True)
+        subprocess.run([sys.executable, "-m", "scripts.exportar_bloques_liberados"], check=True)
+        subprocess.run([sys.executable, "-m", "scripts.limpiar_md_bloques"], check=True)
         print("bloques_liberados.md actualizado correctamente.")
     except Exception as e:
         print(f"Error actualizando bloques_liberados.md: {e}")

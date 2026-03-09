@@ -90,7 +90,7 @@ def generar_dashboard_contratista(
 
         # Ejecutar con subprocess.run que es más simple y robusto
         resultado = subprocess.run(
-            [sys.executable, "-X", "utf8", "generators/dashboard_generator.py", "--no-cache"],
+            [sys.executable, "-X", "utf8", "-m", "generators.dashboard_generator", "--no-cache"],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -177,7 +177,7 @@ def main() -> int:
         env["SEMANA_CORTE"] = semana_corte  # Pasar la semana al consolidado
 
         resultado_consolidado = subprocess.run(
-            [sys.executable, "-X", "utf8", "dashboard_consolidado.py"],
+            [sys.executable, "-X", "utf8", "-m", "generators.consolidado_generator"],
             capture_output=True,
             text=True,
             encoding="utf-8",

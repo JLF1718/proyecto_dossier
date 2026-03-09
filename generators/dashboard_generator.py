@@ -40,19 +40,37 @@ from plotly.subplots import make_subplots
 import yaml
 
 # Importar funciones core de métricas (ÚNICA FUENTE DE VERDAD)
-from core.metricas import (
-    calcular_metricas_individuales,
-    validar_consistencia_metricas,
-    imprimir_metricas
-)
+# Compatible tanto al ejecutar como módulo (-m) como script directo.
+try:
+    from core.metricas import (
+        calcular_metricas_individuales,
+        validar_consistencia_metricas,
+        imprimir_metricas
+    )
 
-# Importar utilidades comunes
-from generators.utils_generator import (
-    obtener_estructura_directorios,
-    crear_directorios,
-    solicitar_semana,
-    guardar_archivos_individuales
-)
+    from generators.utils_generator import (
+        obtener_estructura_directorios,
+        crear_directorios,
+        solicitar_semana,
+        guardar_archivos_individuales
+    )
+except ModuleNotFoundError:
+    PROJECT_ROOT = Path(__file__).resolve().parents[1]
+    if str(PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT))
+
+    from core.metricas import (
+        calcular_metricas_individuales,
+        validar_consistencia_metricas,
+        imprimir_metricas
+    )
+
+    from generators.utils_generator import (
+        obtener_estructura_directorios,
+        crear_directorios,
+        solicitar_semana,
+        guardar_archivos_individuales
+    )
 
 # ========== CONFIGURACIÓN DE LOGGING ==========
 
@@ -724,24 +742,27 @@ Ejemplos:
         # Exportar gráficos individuales
         logger.info("🎨 Exportando gráficos individuales...")
         
+        # Configuración con descarga de imágenes
+        from generators.utils_generator import PLOTLY_CONFIG_INTERACTIVE
+        
         # Gauge 1: % Dossiers Liberados
         gauge1 = go.Figure(fig.data[0])
         gauge1.update_layout(title="% Dossiers Liberados", height=400, width=500)
-        gauge1.write_html(str(graficos_dir / "01_gauge_dossiers_liberados.html"))
+        gauge1.write_html(str(graficos_dir / "01_gauge_dossiers_liberados.html"), config=PLOTLY_CONFIG_INTERACTIVE)
         
         # Gauge 2: % Peso Liberado
         gauge2 = go.Figure(fig.data[1])
         gauge2.update_layout(title="% Peso Liberado", height=400, width=500)
-        gauge2.write_html(str(graficos_dir / "02_gauge_peso_liberado.html"))
+        gauge2.write_html(str(graficos_dir / "02_gauge_peso_liberado.html"), config=PLOTLY_CONFIG_INTERACTIVE)
         
         # Dona 1: Distribución por Cantidad
         dona1 = go.Figure(fig.data[2])
         dona1.update_layout(title="Distribución por Cantidad", height=500, width=600)
-        dona1.write_html(str(graficos_dir / "03_dona_cantidad.html"))
+        dona1.write_html(str(graficos_dir / "03_dona_cantidad.html"), config=PLOTLY_CONFIG_INTERACTIVE)
         
         # Dona 2: Distribución por Peso
         dona2 = go.Figure(fig.data[3])
-        dona2.write_html(str(graficos_dir / "04_dona_peso.html"))
+        dona2.write_html(str(graficos_dir / "04_dona_peso.html"), config=PLOTLY_CONFIG_INTERACTIVE)
         
         # Barras ETAPA - Cantidad (Liberados + Pendientes)
         barras_etapa_cant = go.Figure()
@@ -757,7 +778,7 @@ Ejemplos:
                 height=500, 
                 width=700
             )
-            barras_etapa_cant.write_html(str(graficos_dir / "05_barras_etapa_cantidad.html"))
+            barras_etapa_cant.write_html(str(graficos_dir / "05_barras_etapa_cantidad.html"), config=PLOTLY_CONFIG_INTERACTIVE)
         
         # Barras ETAPA - Peso (Liberados + Pendientes)
         barras_etapa_peso = go.Figure()
@@ -773,7 +794,7 @@ Ejemplos:
                 height=500, 
                 width=700
             )
-            barras_etapa_peso.write_html(str(graficos_dir / "06_barras_etapa_peso.html"))
+            barras_etapa_peso.write_html(str(graficos_dir / "06_barras_etapa_peso.html"), config=PLOTLY_CONFIG_INTERACTIVE)
         
         # Barras: Bloques en Ciclo de Revisión (DESHABILITADO)
         # if len(fig.data) > 8 and len(bloques) > 0:

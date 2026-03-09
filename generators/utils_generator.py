@@ -13,6 +13,26 @@ from datetime import datetime
 from typing import Optional, Tuple
 import pandas as pd
 
+# ========== CONFIGURACIÓN PLOTLY ==========
+# Configuración estándar con botones de descarga habilitados
+PLOTLY_CONFIG_INTERACTIVE = {
+    'displayModeBar': True,
+    'displaylogo': False,
+    'modeBarButtonsToAdd': ['toImage'],
+    'toImageButtonOptions': {
+        'format': 'png',
+        'filename': 'grafico',
+        'height': 1080,
+        'width': 1920,
+        'scale': 2
+    }
+}
+
+PLOTLY_CONFIG_STATIC = {
+    'displayModeBar': False,
+    'displaylogo': False
+}
+
 
 def leer_csv_robusto(ruta: Path) -> pd.DataFrame:
     """Lee CSV con fallback automático de encodings."""
@@ -86,7 +106,7 @@ def guardar_archivos_individuales(
     dashboard_actual = dirs['dashboards'] / f"dashboard_{contratista}_{ts_dash}.html"
     fig_dashboard.write_html(
         str(dashboard_actual),
-        config={'displayModeBar': True, 'displaylogo': False}
+        config=PLOTLY_CONFIG_INTERACTIVE
     )
 
     # Crear carpeta de histórico para la semana
@@ -101,7 +121,7 @@ def guardar_archivos_individuales(
     dashboard_historico = semana_dir / f"dashboard_{contratista}_{semana}_{ts_hist}.html"
     fig_dashboard.write_html(
         str(dashboard_historico),
-        config={'displayModeBar': True, 'displaylogo': False}
+        config=PLOTLY_CONFIG_INTERACTIVE
     )
     
     # Guardar datos Excel si se proporcionan
@@ -139,13 +159,13 @@ def guardar_archivos_consolidados(
     # Dashboard consolidado
     ts_dash = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     dashboard_actual = dirs['dashboards'] / f"dashboard_consolidado_{ts_dash}.html"
-    fig_dashboard.write_html(str(dashboard_actual), config={'displayModeBar': True, 'displaylogo': False})
+    fig_dashboard.write_html(str(dashboard_actual), config=PLOTLY_CONFIG_INTERACTIVE)
     rutas['dashboard_actual'] = dashboard_actual
 
     # Tabla resumen
     ts_tabla = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     tabla_resumen = dirs['tablas'] / f"tabla_resumen_ibcs_{ts_tabla}.html"
-    fig_tabla_resumen.write_html(str(tabla_resumen), config={'displayModeBar': False, 'displaylogo': False})
+    fig_tabla_resumen.write_html(str(tabla_resumen), config=PLOTLY_CONFIG_STATIC)
     rutas['tabla_resumen'] = tabla_resumen
 
     # Tablas individuales
@@ -153,7 +173,7 @@ def guardar_archivos_consolidados(
     for contratista, fig_tabla in tablas_individuales.items():
         ts_ind = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         tabla_ind = dirs['tablas'] / f"tabla_{contratista.lower()}_{ts_ind}.html"
-        fig_tabla.write_html(str(tabla_ind), config={'displayModeBar': False, 'displaylogo': False})
+        fig_tabla.write_html(str(tabla_ind), config=PLOTLY_CONFIG_STATIC)
         rutas['tablas_individuales'].append(tabla_ind)
     
     # ===== ARCHIVOS HISTÓRICOS POR SEMANA =====
@@ -164,19 +184,19 @@ def guardar_archivos_consolidados(
     
     # Dashboard consolidado histórico
     dashboard_hist = semana_dir / f"dashboard_consolidado_{semana}_{fecha_str}.html"
-    fig_dashboard.write_html(str(dashboard_hist), config={'displayModeBar': True, 'displaylogo': False})
+    fig_dashboard.write_html(str(dashboard_hist), config=PLOTLY_CONFIG_INTERACTIVE)
     rutas['dashboard_historico'] = dashboard_hist
     
     # Tabla resumen histórica
     tabla_res_hist = semana_dir / f"tabla_resumen_{semana}_{fecha_str}.html"
-    fig_tabla_resumen.write_html(str(tabla_res_hist), config={'displayModeBar': False, 'displaylogo': False})
+    fig_tabla_resumen.write_html(str(tabla_res_hist), config=PLOTLY_CONFIG_STATIC)
     rutas['tabla_resumen_historico'] = tabla_res_hist
     
     # Tablas individuales históricas
     rutas['tablas_individuales_historico'] = []
     for contratista, fig_tabla in tablas_individuales.items():
         tabla_ind_hist = semana_dir / f"tabla_{contratista.lower()}_{semana}_{fecha_str}.html"
-        fig_tabla.write_html(str(tabla_ind_hist), config={'displayModeBar': False, 'displaylogo': False})
+        fig_tabla.write_html(str(tabla_ind_hist), config=PLOTLY_CONFIG_STATIC)
         rutas['tablas_individuales_historico'].append(tabla_ind_hist)
     
     # Datos Excel consolidados

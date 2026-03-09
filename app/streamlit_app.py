@@ -440,8 +440,8 @@ else:
         def normalizar_desde_fuente():
             try:
                 import subprocess, sys
-                script = "scripts/normalizar_baysa.py" if contratista == "BAYSA" else "scripts/normalizar_jamar.py"
-                r = subprocess.run([sys.executable, "-X", "utf8", script], capture_output=True, text=True, encoding="utf-8", errors="replace")
+                modulo = "scripts.normalizar_baysa" if contratista == "BAYSA" else "scripts.normalizar_jamar"
+                r = subprocess.run([sys.executable, "-X", "utf8", "-m", modulo], capture_output=True, text=True, encoding="utf-8", errors="replace")
                 ok = r.returncode == 0
                 st.success("✅ Normalización completada" if ok else "❌ Error normalizando datos")
                 with st.expander("Ver salida de normalización"):
@@ -473,14 +473,13 @@ def generar_dashboards(semana: str):
             working_dir = str(BASE)
             semana_upper = semana.strip().upper()
             for contratista in ["JAMAR", "BAYSA"]:
-                script = "generators/dashboard_generator.py"
                 env = os.environ.copy()
                 env["PYTHONUTF8"] = "1"
                 env["PYTHONIOENCODING"] = "utf-8"
                 env["SEMANA_CORTE"] = semana_upper
                 env["CONTRATISTA"] = contratista
                 r = subprocess.run([
-                    sys.executable, "-X", "utf8", script, "--no-cache"
+                    sys.executable, "-X", "utf8", "-m", "generators.dashboard_generator", "--no-cache"
                 ], capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=working_dir, env=env)
                 if r.returncode != 0:
                     st.error(f"❌ Error generando dashboard para {contratista}")
@@ -514,14 +513,13 @@ def generar_tablas(semana: str):
             import streamlit.components.v1 as components
             working_dir = str(BASE)
             semana_upper = semana.strip().upper()
-            script = "generators/consolidado_generator.py"
             env = os.environ.copy()
             env["PYTHONUTF8"] = "1"
             env["PYTHONIOENCODING"] = "utf-8"
             env["SEMANA_CORTE"] = semana_upper
             try:
                 r = subprocess.run([
-                    sys.executable, "-X", "utf8", script
+                    sys.executable, "-X", "utf8", "-m", "generators.consolidado_generator"
                 ], capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=working_dir, env=env, timeout=30)
             except subprocess.TimeoutExpired:
                 st.error("⏱️ Timeout: El proceso tardó más de 30 segundos.")
@@ -533,9 +531,8 @@ def generar_tablas(semana: str):
                     if r.stderr:
                         st.text("\n[stderr]\n" + r.stderr)
                 return
-            script2 = str(BASE / "scripts" / "exportar_bloques_liberados_json_html.py")
             r2 = subprocess.run([
-                sys.executable, "-X", "utf8", script2
+                sys.executable, "-X", "utf8", "-m", "scripts.exportar_bloques_liberados_json_html"
             ], capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=working_dir, env=env)
             if r2.returncode != 0:
                 st.warning("Tablas generadas, pero error en bloques_liberados.html")
