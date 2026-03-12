@@ -38,7 +38,8 @@ try:
         crear_directorios,
         solicitar_semana,
         guardar_archivos_consolidados,
-        mostrar_resumen_archivos
+        mostrar_resumen_archivos,
+        PLOTLY_CONFIG_INTERACTIVE
     )
 except ModuleNotFoundError:
     PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -57,7 +58,8 @@ except ModuleNotFoundError:
         crear_directorios,
         solicitar_semana,
         guardar_archivos_consolidados,
-        mostrar_resumen_archivos
+        mostrar_resumen_archivos,
+        PLOTLY_CONFIG_INTERACTIVE
     )
 
 # ====== BLINDAJE UTF-8 (colócalo AQUÍ) ======
@@ -1296,6 +1298,15 @@ def main():
         timestamp_simple = datetime.now().strftime("%Y%m%d_%H%M%S")
         nombre_archivo = f"analisis_completo_baysa_{timestamp_simple}.html"
         ruta_archivo = Path("output/tablas") / nombre_archivo
+
+        def _plotly_download_config(filename: str) -> dict:
+            config_interactive = dict(PLOTLY_CONFIG_INTERACTIVE)
+            config_interactive["toImageButtonOptions"] = dict(
+                PLOTLY_CONFIG_INTERACTIVE.get("toImageButtonOptions", {})
+            )
+            config_interactive["toImageButtonOptions"]["filename"] = filename
+            return config_interactive
+
         # Crear tabla ejecutiva BAYSA
         fig_baysa = crear_tabla_individual_contratista(df, 'BAYSA', config, semana_corte)
         # Crear tabla de entregas BAYSA
@@ -1308,11 +1319,21 @@ def main():
         temp_html1 = ruta_archivo.with_suffix('.temp1.html')
         temp_html2 = ruta_archivo.with_suffix('.temp2.html')
         temp_html3 = ruta_archivo.with_suffix('.temp3.html')
-        fig_baysa.write_html(str(temp_html1), include_plotlyjs='cdn', full_html=False, config={"displayModeBar": False, "staticPlot": True})
+        fig_baysa.write_html(
+            str(temp_html1),
+            include_plotlyjs='cdn',
+            full_html=False,
+            config=_plotly_download_config("resumen_baysa")
+        )
         if fig_entregas is not None:
             fig_entregas.write_html(str(temp_html2), include_plotlyjs=False, full_html=False, config={"displayModeBar": False, "staticPlot": True})
         if fig_grafico is not None:
-            fig_grafico.write_html(str(temp_html3), include_plotlyjs=False, full_html=False, config={"displayModeBar": False, "staticPlot": True})
+            fig_grafico.write_html(
+                str(temp_html3),
+                include_plotlyjs=False,
+                full_html=False,
+                config=_plotly_download_config("resumen_conteo_baysa")
+            )
         # Nota Ejecutiva HTML
         nota_ejecutiva = '''
         <div style="background:#FFF6EA; border-left:4px solid #F6A623; padding:10px 18px; margin:12px 0 18px 0; font-family:Segoe UI,Arial,sans-serif;">
@@ -1347,20 +1368,20 @@ def main():
         # Unir todo y exportar
         with open(ruta_archivo, 'w', encoding='utf-8') as f:
             f.write('<html><head><meta charset="utf-8"><title>Análisis Completo BAYSA</title>')
-            f.write('<style>body{background:#fafbfc;} .baysa-panel{max-width:1200px;margin:0 auto 6px auto;padding:0 0 0 0;background:#fff;border-radius:10px;box-shadow:0 2px 8px #0001;overflow:hidden;} .baysa-table{padding:18px 18px 0 18px; min-width:1050px; max-width:1150px;} .nota-ejecutiva-panel{margin:0;padding:0;border-radius:0 0 10px 10px;} .baysa-table .js-plotly-plot {overflow:visible!important;pointer-events:none!important;} .baysa-table .js-plotly-plot .main-svg {pointer-events:none!important;} </style>')
+            f.write('<style>body{background:#fafbfc;} .baysa-panel{max-width:1200px;margin:0 auto 6px auto;padding:0 0 0 0;background:#fff;border-radius:10px;box-shadow:0 2px 8px #0001;overflow:hidden;} .baysa-table{padding:18px 18px 0 18px; min-width:1050px; max-width:1150px;} .nota-ejecutiva-panel{margin:0;padding:0;border-radius:0 0 10px 10px;} .baysa-table .js-plotly-plot{overflow:visible!important;} .baysa-table .modebar{pointer-events:auto!important;} </style>')
             f.write('</head><body>')
             f.write(encabezado)
             f.write('<div style="max-width:1200px; margin:0 auto;">')
             # Panel 1: Executive summary table + note inside panel
             f.write('<div class="baysa-panel">')
-            f.write('<div class="baysa-table">')
+            f.write('<div class="baysa-table baysa-plot-interactive">')
             f.write(tabla1_html)
             f.write('</div>')
             f.write(nota_ejecutiva.replace('<div ', '<div class="nota-ejecutiva-panel" ', 1))
             f.write('</div>')
              # Panel2: Gráfico de barras agrupadas
             if grafico_html:
-                f.write('<div class="baysa-panel"><div class="baysa-table">')
+                f.write('<div class="baysa-panel"><div class="baysa-table baysa-plot-interactive">')
                 f.write(grafico_html)
                 f.write('</div></div>')
             # Panel 3: Pending deliveries table
@@ -1403,25 +1424,12 @@ def main():
         semana=semana
     )
 
-    # Actualizar bloques_liberados.md automáticamente
-    try:
-        import subprocess, sys
-        print("\nActualizando bloques_liberados.md...")
-        subprocess.run([sys.executable, "-m", "scripts.exportar_bloques_liberados"], check=True)
-        subprocess.run([sys.executable, "-m", "scripts.limpiar_md_bloques"], check=True)
-        print("bloques_liberados.md actualizado correctamente.")
-    except Exception as e:
-        print(f"Error actualizando bloques_liberados.md: {e}")
-    # Al final de main, actualizar bloques_liberados.html
-    # --- Export automático: Bloques Liberados (HTML/JSON) ---
-    # --- Export automático: Bloques Liberados (HTML/JSON) + ASSERTS ---
-    # --- Export automático: Bloques Liberados (HTML/JSON) + ASSERTS ---
-    # --- Export automático: Bloques Liberados (HTML/JSON) + ASSERTS ---
+    # Export automático de bloques liberados en output/exports
     try:
         exports_dir = output_dir / "exports"
         json_path, html_path = generar_bloques_liberados_html_json_desde_df(df, exports_dir)
-        print(f"✅ bloques_liberados.html actualizado: {html_path}")
-        print(f"✅ bloques_liberados.json actualizado: {json_path}")
+        print(f"✅ bloques_liberados.html generado: {html_path}")
+        print(f"✅ bloques_liberados.json generado: {json_path}")
 
         # ===== ASSERTS (control de integridad) =====
         def _assert(cond: bool, msg: str):

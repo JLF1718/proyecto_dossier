@@ -531,19 +531,13 @@ def generar_tablas(semana: str):
                     if r.stderr:
                         st.text("\n[stderr]\n" + r.stderr)
                 return
-            r2 = subprocess.run([
-                sys.executable, "-X", "utf8", "-m", "scripts.exportar_bloques_liberados_json_html"
-            ], capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=working_dir, env=env)
-            if r2.returncode != 0:
-                st.warning("Tablas generadas, pero error en bloques_liberados.html")
-            else:
-                st.success("✅ Tablas y bloques liberados generados correctamente")
-                html_path = BASE / "bloques_liberados.html"
-                if html_path.exists():
-                    with open(html_path, "r", encoding="utf-8") as f:
-                        html_content = f.read()
-                    st.caption("Vista previa de bloques liberados:")
-                    components.html(html_content, height=600, scrolling=True)
+            st.success("✅ Tablas y bloques liberados generados correctamente")
+            html_path = BASE / "output" / "exports" / "bloques_liberados.html"
+            if html_path.exists():
+                with open(html_path, "r", encoding="utf-8") as f:
+                    html_content = f.read()
+                st.caption("Vista previa de bloques liberados:")
+                components.html(html_content, height=600, scrolling=True)
             out_tablas = BASE / "output" / "tablas"
             archivos_tablas = []
             if out_tablas.exists():
