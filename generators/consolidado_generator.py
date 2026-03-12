@@ -582,7 +582,13 @@ def crear_tabla_resumen_ibcs(df: pd.DataFrame, config: dict, semana_corte: str =
     
     return fig
 
-def crear_tabla_individual_contratista(df: pd.DataFrame, contratista: str, config: dict, semana_corte: str = "S186") -> go.Figure:
+def crear_tabla_individual_contratista(
+    df: pd.DataFrame,
+    contratista: str,
+    config: dict,
+    semana_corte: str = "S186",
+    include_nota_descarga: bool = True,
+) -> go.Figure:
     """Crea tabla IBCS detallada para un contratista individual."""
     
     # Filtrar datos del contratista
@@ -695,6 +701,11 @@ def crear_tabla_individual_contratista(df: pd.DataFrame, contratista: str, confi
         ['#2C2C2C'] * 6
     ]
     
+    incluir_nota_baysa = contratista == 'BAYSA' and include_nota_descarga
+    table_kwargs = {}
+    if incluir_nota_baysa:
+        table_kwargs['domain'] = dict(x=[0.0, 1.0], y=[0.34, 1.0])
+
     fig = go.Figure(data=[go.Table(
         columnwidth=[120, 130, 130, 130, 130, 100],
         header=dict(
@@ -716,10 +727,11 @@ def crear_tabla_individual_contratista(df: pd.DataFrame, contratista: str, confi
             align=['left', 'left', 'left', 'left', 'left', 'center'],
             height=80,
             line=dict(color='#E0E0E0', width=0.5)
-        )
+        ),
+        **table_kwargs
     )])
-    
-    fig.update_layout(
+
+    layout_kwargs = dict(
         title=dict(
             text=f'<b>Resumen - {contratista} (Semana: {semana_corte})</b><br><span style="font-size:12px; color:#666;">Total: {total} dossieres | Peso Total: {peso_total:,.0f} ton</span>',
             x=0.5,
@@ -728,9 +740,76 @@ def crear_tabla_individual_contratista(df: pd.DataFrame, contratista: str, confi
         ),
         height=320,
         margin=dict(l=30, r=30, t=60, b=70, pad=0),
-
         paper_bgcolor='white'
     )
+
+    if incluir_nota_baysa:
+        layout_kwargs['height'] = 520
+        layout_kwargs['margin'] = dict(l=30, r=30, t=60, b=20, pad=0)
+
+    fig.update_layout(**layout_kwargs)
+
+    if incluir_nota_baysa:
+        fig.add_shape(
+            type='rect',
+            xref='paper',
+            yref='paper',
+            x0=0.0,
+            x1=1.0,
+            y0=0.0,
+            y1=0.25,
+            line=dict(color='#F0D9B5', width=1),
+            fillcolor='#FFF6EA',
+            layer='below'
+        )
+        fig.add_shape(
+            type='rect',
+            xref='paper',
+            yref='paper',
+            x0=0.0,
+            x1=0.006,
+            y0=0.0,
+            y1=0.25,
+            line=dict(color='#F6A623', width=0),
+            fillcolor='#F6A623',
+            layer='above'
+        )
+        fig.add_annotation(
+            xref='paper',
+            yref='paper',
+            x=0.015,
+            y=0.225,
+            xanchor='left',
+            yanchor='top',
+            showarrow=False,
+            align='left',
+            font=dict(size=17, family=font_family, color='#E67C00'),
+            text='<b>Nota Ejecutiva: Observaciones Críticas</b>'
+        )
+        fig.add_annotation(
+            xref='paper',
+            yref='paper',
+            x=0.015,
+            y=0.155,
+            xanchor='left',
+            yanchor='top',
+            showarrow=False,
+            align='left',
+            font=dict(size=12, family=font_family, color='#222'),
+            text='Las observaciones identificadas en la columna OBSERVADO se concentran principalmente en tres categorías críticas<br><b>TOPOGRAFÍA</b>, <b>PLANOS AS-BUILT</b> y <b>PRODUCTO TERMINADO</b>. La ausencia de estas secciones compromete la verificación de trazabilidad<br>y cumplimiento normativo, representando un riesgo de no conformidad en auditorías y revisiones de calidad.'
+        )
+        fig.add_annotation(
+            xref='paper',
+            yref='paper',
+            x=0.015,
+            y=0.055,
+            xanchor='left',
+            yanchor='top',
+            showarrow=False,
+            align='left',
+            font=dict(size=12, family=font_family, color='#222'),
+            text='<b>Peso (ton):</b> El indicador registra el peso total del bloque, pendiente la homologación de entregas parciales una vez se integren los registros<br>del dossier para asegurar la integridad metrológica de la medición.'
+        )
     
     return fig
 
@@ -1308,7 +1387,7 @@ def main():
             return config_interactive
 
         # Crear tabla ejecutiva BAYSA
-        fig_baysa = crear_tabla_individual_contratista(df, 'BAYSA', config, semana_corte)
+        fig_baysa = crear_tabla_individual_contratista(df, 'BAYSA', config, semana_corte, include_nota_descarga=False)
         # Crear tabla de entregas BAYSA
         fig_entregas = crear_tabla_entregas_baysa(df, config)
         # Crear gráfico de barras agrupadas BAYSA
