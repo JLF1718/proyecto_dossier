@@ -4,7 +4,6 @@ from datetime import datetime
 import os
 from pathlib import Path
 import re
-import json
 from typing import Dict, List, Optional
 
 import pandas as pd
@@ -12,12 +11,9 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
 
 from core.metricas import calcular_metricas_basicas
-from generators.consolidado_generator import regenerar_poster_principal_baysa
 from generators.utils_generator import leer_csv_robusto
-from scripts.maintenance.backup_helper import crear_backup_automatico
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "webapp" / "static"
@@ -42,22 +38,6 @@ STATUS_CANONICO = {
     "INPROS_REVISANDO": "EN_REVISIÓN",
     "BAYSA_ATENDIENDO_COMENTARIOS": "OBSERVADO",
 }
-
-ESTATUS_OPCIONES = ["PLANEADO", "OBSERVADO", "EN_REVISIÓN", "LIBERADO"]
-ETAPAS_SUGERIDAS = [
-    "INGENIERIA",
-    "DISEÑO",
-    "FABRICACION",
-    "MONTAJE",
-    "PRUEBAS",
-    "ENTREGA",
-]
-
-
-class BaysaStatusUpdateIn(BaseModel):
-    bloque: str = Field(min_length=1)
-    estatus: str
-
 
 app = FastAPI(
     title="Control Dossieres Web",
@@ -141,26 +121,6 @@ def _serializar_metricas(df: pd.DataFrame) -> Dict[str, float]:
     }
 
 
-def _asegurar_esquema(df: pd.DataFrame, contratista: str) -> pd.DataFrame:
-    cols = ["BLOQUE", "ETAPA", "ESTATUS", "PESO"]
-    if contratista == "BAYSA":
-        cols.append("ENTREGA")
-    cols.append("No. REVISIÓN")
-    for col in cols:
-        if col not in df.columns:
-            df[col] = pd.NA
-    return df[cols]
-
-
-def _validar_estatus_baysa(record: BaysaStatusUpdateIn) -> List[str]:
-    errores: List[str] = []
-    if not record.bloque.strip():
-        errores.append("BLOQUE es obligatorio")
-    if record.estatus not in ESTATUS_OPCIONES:
-        errores.append("ESTATUS invalido")
-    return errores
-
-
 def _inferir_semana_actual() -> Optional[str]:
     for var_name in ("SEMANA_CORTE", "SEMANA_PROYECTO"):
         value = os.getenv(var_name, "").strip().upper()
@@ -205,19 +165,6 @@ def _regenerar_vista_baysa() -> Dict[str, object]:
         return {"ok": False, "message": f"CSV actualizado, pero falló la regeneración ligera: {exc}"}
 
 
-def _append_status_change_log(bloque: str, estatus_anterior: str, estatus_nuevo: str) -> None:
-    STATUS_AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
-    row = {
-        "timestamp": datetime.now().isoformat(),
-        "bloque": bloque,
-        "estatus_anterior": estatus_anterior,
-        "estatus_nuevo": estatus_nuevo,
-        "semana": _inferir_semana_actual() or "N/A",
-    }
-    with open(STATUS_AUDIT_LOG, "a", encoding="utf-8") as f:
-        f.write(json.dumps(row, ensure_ascii=False) + "\n")
-
-
 @app.get("/")
 def home() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
@@ -226,84 +173,6 @@ def home() -> FileResponse:
 @app.get("/api/health")
 def health() -> Dict[str, str]:
     return {"status": "ok", "timestamp": datetime.now().isoformat()}
-
-
-@app.get("/api/baysa-form-meta")
-def baysa_form_meta() -> Dict[str, object]:
-    df = _leer_contratista("BAYSA")
-    bloques = (
-        df[["BLOQUE", "ESTATUS"]]
-        .fillna("")
-        .sort_values("BLOQUE")
-        .to_dict(orient="records")
-        if not df.empty and {"BLOQUE", "ESTATUS"}.issubset(df.columns)
-        else []
-    )
-    return {
-        "estatus_options": ESTATUS_OPCIONES,
-        "bloques": bloques,
-    }
-
-
-@app.post("/api/baysa-block-status")
-def update_baysa_block_status(record: BaysaStatusUpdateIn) -> Dict[str, object]:
-    errores = _validar_estatus_baysa(record)
-    if errores:
-        raise HTTPException(status_code=400, detail=errores)
-
-    ruta = CSV_PATHS["BAYSA"]
-    if not ruta.exists():
-        raise HTTPException(status_code=404, detail="CSV BAYSA no encontrado")
-
-    df_actual = leer_csv_robusto(ruta)
-    df_actual = _asegurar_esquema(df_actual, "BAYSA")
-
-    bloque = record.bloque.strip()
-    mask = df_actual["BLOQUE"].astype(str).str.strip() == bloque
-    if not mask.any():
-        raise HTTPException(status_code=404, detail=f"Bloque no encontrado: {bloque}")
-
-    estatus_anterior = str(df_actual.loc[mask, "ESTATUS"].iloc[0])
-    if estatus_anterior == record.estatus:
-        regeneracion = _regenerar_vista_baysa()
-        return {
-            "message": "Sin cambios: el bloque ya tenia ese estatus.",
-            "updated": {"bloque": bloque, "estatus_anterior": estatus_anterior, "estatus_nuevo": record.estatus},
-            "metrics": _serializar_metricas(df_actual),
-            "regeneration": regeneracion,
-        }
-
-    crear_backup_automatico(ruta, mantener_ultimos=10)
-    df_actual.loc[mask, "ESTATUS"] = record.estatus
-    df_actual.to_csv(ruta, index=False, encoding="utf-8-sig")
-    _append_status_change_log(bloque, estatus_anterior, record.estatus)
-    regeneracion = _regenerar_vista_baysa()
-
-    return {
-        "message": "Estatus del bloque actualizado en BAYSA",
-        "updated": {"bloque": bloque, "estatus_anterior": estatus_anterior, "estatus_nuevo": record.estatus},
-        "metrics": _serializar_metricas(df_actual),
-        "regeneration": regeneracion,
-    }
-
-
-@app.get("/api/baysa-status-history")
-def baysa_status_history(limit: int = Query(default=25, ge=1, le=200)) -> Dict[str, object]:
-    if not STATUS_AUDIT_LOG.exists():
-        return {"count": 0, "items": []}
-
-    with open(STATUS_AUDIT_LOG, "r", encoding="utf-8") as f:
-        lines = [line.strip() for line in f.readlines() if line.strip()]
-
-    items = []
-    for line in lines[-limit:]:
-        try:
-            items.append(json.loads(line))
-        except json.JSONDecodeError:
-            continue
-
-    items.reverse()
-    return {"count": len(items), "items": items}
 
 
 @app.get("/api/summary")

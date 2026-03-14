@@ -176,94 +176,6 @@ function initAccessPanel() {
   });
 }
 
-async function initForm() {
-  const bloque = document.getElementById("bloque");
-  const estatus = document.getElementById("estatus");
-  const estatusFilter = document.getElementById("estatusFilter");
-  const estatusActual = document.getElementById("estatusActual");
-  const bloqueSearch = document.getElementById("bloqueSearch");
-  const bloqueCount = document.getElementById("bloqueCount");
-  const form = document.getElementById("baysaForm");
-  const submitBtn = document.getElementById("submitBtn");
-  const formMessage = document.getElementById("formMessage");
-  let metaBloques = [];
-
-  if (!bloque || !estatus || !estatusFilter || !estatusActual || !bloqueSearch || !bloqueCount || !form || !submitBtn || !formMessage) return;
-
-  const syncCurrentStatus = () => {
-    const selected = metaBloques.find((item) => item.BLOQUE === bloque.value);
-    estatusActual.value = selected?.ESTATUS || "";
-    if (selected?.ESTATUS) {
-      estatus.value = selected.ESTATUS;
-    }
-  };
-
-  const renderBloqueOptions = () => {
-    const searchTerm = bloqueSearch.value.trim().toUpperCase();
-    const filterValue = estatusFilter.value;
-
-    const filtered = metaBloques.filter((item) => {
-      const byStatus = !filterValue || item.ESTATUS === filterValue;
-      const bySearch = !searchTerm || item.BLOQUE.toUpperCase().includes(searchTerm);
-      return byStatus && bySearch;
-    });
-
-    bloque.innerHTML = filtered
-      .map((item) => `<option value="${item.BLOQUE}">${item.BLOQUE}</option>`)
-      .join("");
-
-    bloqueCount.textContent = `${filtered.length} bloque(s) disponibles`;
-    syncCurrentStatus();
-  };
-
-  const loadMeta = async () => {
-    const meta = await getJson("/api/baysa-form-meta");
-    metaBloques = [...(meta.bloques || [])].sort((a, b) => a.BLOQUE.localeCompare(b.BLOQUE, "es"));
-    estatus.innerHTML = (meta.estatus_options || [])
-      .map((item) => `<option value="${item}">${item}</option>`)
-      .join("");
-
-    estatusFilter.innerHTML = ["<option value=\"\">Todos</option>", ...(meta.estatus_options || []).map((item) => `<option value=\"${item}\">${item}</option>`)]
-      .join("");
-
-    renderBloqueOptions();
-  };
-
-  try {
-    await loadMeta();
-    bloque.addEventListener("change", syncCurrentStatus);
-    bloqueSearch.addEventListener("input", renderBloqueOptions);
-    estatusFilter.addEventListener("change", renderBloqueOptions);
-  } catch (err) {
-    formMessage.textContent = `No se pudo cargar el formulario: ${err.message}`;
-  }
-
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    submitBtn.disabled = true;
-    formMessage.textContent = "Guardando cambio de estatus...";
-
-    const payload = {
-      bloque: document.getElementById("bloque").value.trim(),
-      estatus: document.getElementById("estatus").value,
-    };
-
-    try {
-      const result = await postJson("/api/baysa-block-status", payload);
-      const regenMsg = result.regeneration?.ok ? " Poster actualizado." : " Datos guardados; revisa regeneracion.";
-      formMessage.textContent = `${result.updated.bloque}: ${result.updated.estatus_anterior} -> ${result.updated.estatus_nuevo}.${regenMsg}`;
-      await loadMeta();
-      bloque.value = result.updated.bloque;
-      estatusActual.value = result.updated.estatus_nuevo;
-      await refreshAll();
-    } catch (err) {
-      formMessage.textContent = `Error: ${err.message}`;
-    } finally {
-      submitBtn.disabled = false;
-    }
-  });
-}
-
 async function refreshAll() {
   const healthBadge = document.getElementById("healthBadge");
   const lastRefresh = document.getElementById("lastRefresh");
@@ -305,7 +217,6 @@ async function refreshAll() {
 
 initAccessPanel();
 refreshAll().catch(() => null);
-initForm();
 const refreshNow = document.getElementById("refreshNow");
 if (refreshNow) {
   refreshNow.addEventListener("click", () => {
