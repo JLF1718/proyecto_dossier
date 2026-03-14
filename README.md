@@ -6,6 +6,7 @@ Repositorio para captura, edición y reporte de dossieres de BAYSA y JAMAR.
 
 ```bash
 python cli.py run
+python cli.py run-web
 ```
 
 Comandos principales:
@@ -16,6 +17,8 @@ python cli.py validate
 python cli.py status
 python cli.py generate S186
 python cli.py backup
+python cli.py run-web
+python cli.py prune
 ```
 
 ## Estructura vigente
@@ -38,6 +41,7 @@ docs/                 Documentación canónica
 - `docs/PROCEDIMIENTOS.md`: tareas operativas y comandos.
 - `docs/ARQUITECTURA.md`: estructura técnica y responsabilidades.
 - `docs/HISTORICO.md`: contexto de cambios y refactorizaciones.
+- `docs/WEB_APP.md`: app web profesional (Fase 1) y enlace público en vivo.
 
 ## Datos y salidas
 

@@ -1,0 +1,339 @@
+from __future__ import annotations
+
+from datetime import datetime
+import os
+from pathlib import Path
+import re
+from typing import Dict, List, Optional
+
+import pandas as pd
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
+
+from core.metricas import calcular_metricas_basicas
+from generators.consolidado_generator import regenerar_poster_principal_baysa
+from generators.utils_generator import leer_csv_robusto
+from scripts.maintenance.backup_helper import crear_backup_automatico
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+STATIC_DIR = BASE_DIR / "webapp" / "static"
+OUTPUT_DIR = BASE_DIR / "output"
+TABLAS_DIR = OUTPUT_DIR / "tablas"
+
+CSV_PATHS: Dict[str, Path] = {
+    "BAYSA": BASE_DIR / "data" / "contratistas" / "BAYSA" / "ctrl_dosieres_BAYSA_normalizado.csv",
+    "JAMAR": BASE_DIR / "data" / "contratistas" / "JAMAR" / "ctrl_dosieres_JAMAR_normalizado.csv",
+}
+
+STATUS_CANONICO = {
+    "NO_INICIADO": "PLANEADO",
+    "POR_ASIGNAR": "PLANEADO",
+    "PLANEADO": "PLANEADO",
+    "OBSERVADO": "OBSERVADO",
+    "EN_REVISION": "EN_REVISIÓN",
+    "EN_REVISIÓN": "EN_REVISIÓN",
+    "LIBERADO": "LIBERADO",
+    "INPROS_REVISANDO": "EN_REVISIÓN",
+    "BAYSA_ATENDIENDO_COMENTARIOS": "OBSERVADO",
+}
+
+ESTATUS_OPCIONES = ["PLANEADO", "OBSERVADO", "EN_REVISIÓN", "LIBERADO"]
+ETAPAS_SUGERIDAS = [
+    "INGENIERIA",
+    "DISEÑO",
+    "FABRICACION",
+    "MONTAJE",
+    "PRUEBAS",
+    "ENTREGA",
+]
+
+
+class BaysaStatusUpdateIn(BaseModel):
+    bloque: str = Field(min_length=1)
+    estatus: str
+
+
+app = FastAPI(
+    title="Control Dossieres Web",
+    description="Portal web profesional para seguimiento en vivo (Fase 1)",
+    version="1.0.0",
+)
+
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+app.mount("/output", StaticFiles(directory=str(OUTPUT_DIR)), name="output")
+
+
+def _normalizar_estatus(df: pd.DataFrame) -> pd.DataFrame:
+    if "ESTATUS" not in df.columns:
+        return df
+    out = df.copy()
+    out["ESTATUS"] = out["ESTATUS"].astype(str).str.strip().str.upper()
+    out["ESTATUS"] = out["ESTATUS"].map(STATUS_CANONICO).fillna(out["ESTATUS"])
+    return out
+
+
+def _leer_contratista(contratista: str) -> pd.DataFrame:
+    ruta = CSV_PATHS.get(contratista)
+    if ruta is None:
+        raise HTTPException(status_code=400, detail=f"Contratista invalido: {contratista}")
+    if not ruta.exists():
+        raise HTTPException(status_code=404, detail=f"CSV no encontrado para {contratista}: {ruta}")
+
+    df = leer_csv_robusto(ruta)
+    if df.empty:
+        return df
+
+    if "PESO" in df.columns:
+        df["PESO"] = pd.to_numeric(df["PESO"], errors="coerce").fillna(0.0)
+    return _normalizar_estatus(df)
+
+
+def _serializar_metricas(df: pd.DataFrame) -> Dict[str, float]:
+    if df.empty:
+        return {
+            "total_dossiers": 0,
+            "dossiers_liberados": 0,
+            "pct_liberado": 0.0,
+            "peso_total": 0.0,
+            "peso_liberado": 0.0,
+            "pct_peso_liberado": 0.0,
+        }
+    metricas = calcular_metricas_basicas(df)
+    return {
+        "total_dossiers": int(metricas["total_dossiers"]),
+        "dossiers_liberados": int(metricas["dossiers_liberados"]),
+        "pct_liberado": round(float(metricas["pct_liberado"]), 2),
+        "peso_total": round(float(metricas["peso_total"]), 2),
+        "peso_liberado": round(float(metricas["peso_liberado"]), 2),
+        "pct_peso_liberado": round(float(metricas["pct_peso_liberado"]), 2),
+    }
+
+
+def _asegurar_esquema(df: pd.DataFrame, contratista: str) -> pd.DataFrame:
+    cols = ["BLOQUE", "ETAPA", "ESTATUS", "PESO"]
+    if contratista == "BAYSA":
+        cols.append("ENTREGA")
+    cols.append("No. REVISIÓN")
+    for col in cols:
+        if col not in df.columns:
+            df[col] = pd.NA
+    return df[cols]
+
+
+def _validar_estatus_baysa(record: BaysaStatusUpdateIn) -> List[str]:
+    errores: List[str] = []
+    if not record.bloque.strip():
+        errores.append("BLOQUE es obligatorio")
+    if record.estatus not in ESTATUS_OPCIONES:
+        errores.append("ESTATUS invalido")
+    return errores
+
+
+def _inferir_semana_actual() -> Optional[str]:
+    for var_name in ("SEMANA_CORTE", "SEMANA_PROYECTO"):
+        value = os.getenv(var_name, "").strip().upper()
+        if re.fullmatch(r"S\d{1,4}", value):
+            return value
+
+    historico_dir = OUTPUT_DIR / "historico"
+    candidatos: List[tuple[float, str]] = []
+    if historico_dir.exists():
+        for path in historico_dir.iterdir():
+            match = re.match(r"^(S\d{1,4})_", path.name)
+            if match:
+                candidatos.append((path.stat().st_mtime, match.group(1)))
+
+    if candidatos:
+        candidatos.sort(reverse=True)
+        return candidatos[0][1]
+
+    return None
+
+
+def _regenerar_vista_baysa() -> Dict[str, object]:
+    semana = _inferir_semana_actual()
+    if not semana:
+        return {"ok": False, "message": "No se pudo inferir la semana actual para regenerar posters."}
+
+    try:
+        ruta = regenerar_poster_principal_baysa(semana, output_dir=OUTPUT_DIR)
+        if ruta is None:
+            return {"ok": False, "message": "No se encontró información BAYSA para regenerar el poster."}
+
+        posters_baysa = sorted(
+            [p for p in TABLAS_DIR.glob("*.html") if p.is_file() and "baysa" in p.name.lower() and "jamar" not in p.name.lower()],
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        for poster_antiguo in posters_baysa[1:]:
+            poster_antiguo.unlink(missing_ok=True)
+
+        return {"ok": True, "message": f"Poster principal actualizado para {semana}.", "poster": ruta.name}
+    except Exception as exc:
+        return {"ok": False, "message": f"CSV actualizado, pero falló la regeneración ligera: {exc}"}
+
+
+@app.get("/")
+def home() -> FileResponse:
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/api/health")
+def health() -> Dict[str, str]:
+    return {"status": "ok", "timestamp": datetime.now().isoformat()}
+
+
+@app.get("/api/baysa-form-meta")
+def baysa_form_meta() -> Dict[str, object]:
+    df = _leer_contratista("BAYSA")
+    bloques = (
+        df[["BLOQUE", "ESTATUS"]]
+        .fillna("")
+        .sort_values("BLOQUE")
+        .to_dict(orient="records")
+        if not df.empty and {"BLOQUE", "ESTATUS"}.issubset(df.columns)
+        else []
+    )
+    return {
+        "estatus_options": ESTATUS_OPCIONES,
+        "bloques": bloques,
+    }
+
+
+@app.post("/api/baysa-block-status")
+def update_baysa_block_status(record: BaysaStatusUpdateIn) -> Dict[str, object]:
+    errores = _validar_estatus_baysa(record)
+    if errores:
+        raise HTTPException(status_code=400, detail=errores)
+
+    ruta = CSV_PATHS["BAYSA"]
+    if not ruta.exists():
+        raise HTTPException(status_code=404, detail="CSV BAYSA no encontrado")
+
+    df_actual = leer_csv_robusto(ruta)
+    df_actual = _asegurar_esquema(df_actual, "BAYSA")
+
+    bloque = record.bloque.strip()
+    mask = df_actual["BLOQUE"].astype(str).str.strip() == bloque
+    if not mask.any():
+        raise HTTPException(status_code=404, detail=f"Bloque no encontrado: {bloque}")
+
+    estatus_anterior = str(df_actual.loc[mask, "ESTATUS"].iloc[0])
+    if estatus_anterior == record.estatus:
+        regeneracion = _regenerar_vista_baysa()
+        return {
+            "message": "Sin cambios: el bloque ya tenia ese estatus.",
+            "updated": {"bloque": bloque, "estatus_anterior": estatus_anterior, "estatus_nuevo": record.estatus},
+            "metrics": _serializar_metricas(df_actual),
+            "regeneration": regeneracion,
+        }
+
+    crear_backup_automatico(ruta, mantener_ultimos=10)
+    df_actual.loc[mask, "ESTATUS"] = record.estatus
+    df_actual.to_csv(ruta, index=False, encoding="utf-8-sig")
+    regeneracion = _regenerar_vista_baysa()
+
+    return {
+        "message": "Estatus del bloque actualizado en BAYSA",
+        "updated": {"bloque": bloque, "estatus_anterior": estatus_anterior, "estatus_nuevo": record.estatus},
+        "metrics": _serializar_metricas(df_actual),
+        "regeneration": regeneracion,
+    }
+
+
+@app.get("/api/summary")
+def summary() -> Dict[str, object]:
+    data: Dict[str, object] = {
+        "generated_at": datetime.now().isoformat(),
+        "contractors": {},
+    }
+
+    consolidados: List[pd.DataFrame] = []
+    for contratista in CSV_PATHS.keys():
+        df = _leer_contratista(contratista)
+        if not df.empty:
+            df = df.copy()
+            df["CONTRATISTA"] = contratista
+            consolidados.append(df)
+        data["contractors"][contratista] = _serializar_metricas(df)
+
+    if consolidados:
+        df_total = pd.concat(consolidados, ignore_index=True)
+        data["global"] = _serializar_metricas(df_total)
+    else:
+        data["global"] = _serializar_metricas(pd.DataFrame())
+
+    return data
+
+
+@app.get("/api/status-distribution")
+def status_distribution(
+    contractor: Optional[str] = Query(default=None, pattern="^(BAYSA|JAMAR)$")
+) -> Dict[str, object]:
+    if contractor:
+        df = _leer_contratista(contractor)
+        conteo = (
+            df["ESTATUS"].value_counts(dropna=False).to_dict() if "ESTATUS" in df.columns else {}
+        )
+        return {"contractor": contractor, "counts": conteo}
+
+    counts: Dict[str, Dict[str, int]] = {}
+    for contratista in CSV_PATHS.keys():
+        df = _leer_contratista(contratista)
+        counts[contratista] = (
+            df["ESTATUS"].value_counts(dropna=False).to_dict() if "ESTATUS" in df.columns else {}
+        )
+    return {"contractor": "ALL", "counts": counts}
+
+
+@app.get("/api/latest-rows")
+def latest_rows(
+    contractor: str = Query(pattern="^(BAYSA|JAMAR)$"),
+    limit: int = Query(default=20, ge=1, le=200),
+) -> Dict[str, object]:
+    df = _leer_contratista(contractor)
+    if df.empty:
+        return {"contractor": contractor, "rows": []}
+
+    columnas = [c for c in ["BLOQUE", "ETAPA", "ESTATUS", "PESO", "ENTREGA", "No. REVISIÓN"] if c in df.columns]
+    if not columnas:
+        columnas = list(df.columns[:8])
+
+    muestra = df.tail(limit).copy()
+    muestra = muestra[columnas]
+    rows = muestra.fillna("").to_dict(orient="records")
+
+    return {
+        "contractor": contractor,
+        "columns": columnas,
+        "rows": rows,
+        "returned": len(rows),
+    }
+
+
+@app.get("/api/tablas-posters")
+def tablas_posters(limit: int = Query(default=1, ge=1, le=10)) -> Dict[str, object]:
+    if not TABLAS_DIR.exists():
+        return {"count": 0, "items": []}
+
+    posters = sorted(
+        [
+            p
+            for p in TABLAS_DIR.glob("*.html")
+            if p.is_file() and "baysa" in p.name.lower() and "jamar" not in p.name.lower()
+        ],
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )[:limit]
+
+    items = [
+        {
+            "name": p.name,
+            "url": f"/output/tablas/{p.name}",
+            "updated_at": datetime.fromtimestamp(p.stat().st_mtime).isoformat(),
+        }
+        for p in posters
+    ]
+    return {"count": len(items), "items": items}

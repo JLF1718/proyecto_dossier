@@ -93,6 +93,43 @@ def cmd_run(args):
         sys.exit(1)
 
 
+def cmd_run_web(args):
+    """Ejecuta la app web FastAPI (Fase 1)."""
+    print_header("[WEB] ABRIENDO APP WEB PROFESIONAL - FASTAPI")
+
+    app_file = PROJECT_ROOT / "webapp" / "main.py"
+
+    if not app_file.exists():
+        print_error(f"Archivo no encontrado: {app_file}")
+        print_info("Verifica que exista la carpeta webapp/")
+        sys.exit(1)
+
+    host = os.getenv("WEB_HOST", "0.0.0.0")
+    port = os.getenv("WEB_PORT", "8000")
+
+    print_info(f"Archivo: {app_file}")
+    print_info(f"URL local: http://localhost:{port}")
+    print_info("Presiona CTRL+C para detener\n")
+
+    try:
+        cmd = [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "webapp.main:app",
+            "--host",
+            host,
+            "--port",
+            str(port),
+        ]
+        subprocess.run(cmd, cwd=str(PROJECT_ROOT))
+    except KeyboardInterrupt:
+        print_info("\nApp web detenida.")
+    except Exception as e:
+        print_error(f"Error al ejecutar app web: {e}")
+        sys.exit(1)
+
+
 def cmd_generate(args):
     """Genera dashboards para una semana específica."""
     if not args.semana:
@@ -246,6 +283,18 @@ def cmd_backup(args):
         sys.exit(1)
 
 
+def cmd_prune(args):
+    """Ejecuta poda segura para reducir peso en disco."""
+    print_header("[MAINTENANCE] PODA SEGURA DE ALMACENAMIENTO")
+
+    try:
+        cmd = [sys.executable, "-m", "scripts.maintenance.prune_storage"]
+        subprocess.run(cmd, cwd=str(PROJECT_ROOT))
+    except Exception as e:
+        print_error(f"Error: {e}")
+        sys.exit(1)
+
+
 def main():
     """Función principal."""
     parser = argparse.ArgumentParser(
@@ -254,10 +303,12 @@ def main():
         epilog="""
 Ejemplos:
   python cli.py run                  # Abrir app (RECOMENDADO)
+    python cli.py run-web              # Abrir app web profesional
   python cli.py generate S186        # Generar dashboards para S186
   python cli.py validate             # Validar proyecto
   python cli.py status               # Ver estado rápido
   python cli.py backup               # Crear respaldo
+    python cli.py prune                # Podar caches, historicos y backups antiguos
         """
     )
     
@@ -266,6 +317,10 @@ Ejemplos:
     # Comando: run
     parser_run = subparsers.add_parser("run", help="Abre la app Streamlit")
     parser_run.set_defaults(func=cmd_run)
+
+    # Comando: run-web
+    parser_run_web = subparsers.add_parser("run-web", help="Abre app web profesional (FastAPI)")
+    parser_run_web.set_defaults(func=cmd_run_web)
     
     # Comando: generate
     parser_gen = subparsers.add_parser("generate", help="Genera dashboards para una semana")
@@ -283,6 +338,10 @@ Ejemplos:
     # Comando: backup
     parser_bak = subparsers.add_parser("backup", help="Crea respaldo")
     parser_bak.set_defaults(func=cmd_backup)
+
+    # Comando: prune
+    parser_prune = subparsers.add_parser("prune", help="Poda segura para reducir peso en disco")
+    parser_prune.set_defaults(func=cmd_prune)
     
     args = parser.parse_args()
     

@@ -1327,6 +1327,100 @@ def obtener_semana():
     else:
         return input("📅 Ingresa el número de semana (ej: S183): ").strip().upper()
 
+
+def regenerar_poster_principal_baysa(semana_corte: str, output_dir: Path | None = None) -> Path | None:
+    """Regenera solo el poster principal BAYSA sin ejecutar toda la corrida completa."""
+    output_dir = output_dir or Path('output')
+    config = cargar_configuracion()
+    df = cargar_datos_consolidados(config)
+
+    from grafico_etapa_estatus_baysa import crear_grafico_etapa_estatus_baysa
+
+    df_baysa = df[df['CONTRATISTA'] == 'BAYSA']
+    if df_baysa.empty:
+        return None
+
+    timestamp_simple = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ruta_archivo = output_dir / 'tablas' / f"analisis_completo_baysa_{timestamp_simple}.html"
+    ruta_archivo.parent.mkdir(parents=True, exist_ok=True)
+
+    def _plotly_download_config(filename: str) -> dict:
+        config_interactive = dict(PLOTLY_CONFIG_INTERACTIVE)
+        config_interactive["toImageButtonOptions"] = dict(
+            PLOTLY_CONFIG_INTERACTIVE.get("toImageButtonOptions", {})
+        )
+        config_interactive["toImageButtonOptions"]["filename"] = filename
+        return config_interactive
+
+    fig_baysa = crear_tabla_individual_contratista(df, 'BAYSA', config, semana_corte, include_nota_descarga=False)
+    fig_grafico = crear_grafico_etapa_estatus_baysa(df_baysa, config)
+
+    temp_html1 = ruta_archivo.with_suffix('.temp1.html')
+    temp_html3 = ruta_archivo.with_suffix('.temp3.html')
+    fig_baysa.write_html(
+        str(temp_html1),
+        include_plotlyjs='cdn',
+        full_html=False,
+        config=_plotly_download_config("resumen_baysa")
+    )
+    if fig_grafico is not None:
+        fig_grafico.write_html(
+            str(temp_html3),
+            include_plotlyjs=False,
+            full_html=False,
+            config=_plotly_download_config("resumen_conteo_baysa")
+        )
+
+    nota_ejecutiva = '''
+    <div style="background:#FFF6EA; border-left:4px solid #F6A623; padding:10px 18px; margin:12px 0 18px 0; font-family:Segoe UI,Arial,sans-serif;">
+        <span style="font-size:17px; font-weight:bold; color:#E67C00; vertical-align:middle; display:inline-block;">
+            <span style="font-size:1.3em; margin-right:7px; vertical-align:middle;">&#9888;</span> Nota Ejecutiva: Observaciones Críticas
+        </span>
+        <div style="font-size:14px; color:#222; margin-top:2px;">
+        <p style="margin:0 0 8px 0;">Las observaciones identificadas en la columna OBSERVADO se concentran principalmente en tres categorías críticas para la trazabilidad del dossier: <b>TOPOGRAFÍA</b>, <b>PLANOS AS-BUILT</b> y <b>PRODUCTO TERMINADO</b>. La ausencia de estas secciones compromete directamente la verificación de trazabilidad y cumplimiento normativo, representando un riesgo de no conformidad en auditorías y revisiones de calidad.</p>
+        <p style="margin:0;"><b>Peso (ton):</b> El indicador registra el peso total del bloque, pendiente la homologación de entregas parciales una vez se integren los registros del dossier para asegurar la integridad metrológica de la medición.</p>
+        </div>
+    </div>
+    '''
+    encabezado = '''
+    <div style="text-align:center; margin-top:24px; margin-bottom:8px;">
+        <span style="font-size:2.1em; font-weight:bold; color:#222; font-family:Segoe UI,Arial,sans-serif; vertical-align:middle;">
+            <span style="vertical-align:middle;">&#128202;</span> Análisis Completo - BAYSA
+        </span>
+        <div style="font-size:1.08em; color:#444; margin-top:3px;">Resumen ejecutivo y cronograma</div>
+    </div>
+    '''
+
+    with open(temp_html1, encoding='utf-8') as f:
+        tabla1_html = f.read()
+    grafico_html = ''
+    if fig_grafico is not None:
+        with open(temp_html3, encoding='utf-8') as f:
+            grafico_html = f.read()
+
+    with open(ruta_archivo, 'w', encoding='utf-8') as f:
+        f.write('<html><head><meta charset="utf-8"><title>Análisis Completo BAYSA</title>')
+        f.write('<style>body{background:#fafbfc;} .baysa-panel{max-width:1200px;margin:0 auto 6px auto;padding:0 0 0 0;background:#fff;border-radius:10px;box-shadow:0 2px 8px #0001;overflow:hidden;} .baysa-table{padding:18px 18px 0 18px; min-width:1050px; max-width:1150px;} .nota-ejecutiva-panel{margin:0;padding:0;border-radius:0 0 10px 10px;} .baysa-table .js-plotly-plot{overflow:visible!important;} .baysa-table .modebar{pointer-events:auto!important;} </style>')
+        f.write('</head><body>')
+        f.write(encabezado)
+        f.write('<div style="max-width:1200px; margin:0 auto;">')
+        f.write('<div class="baysa-panel">')
+        f.write('<div class="baysa-table baysa-plot-interactive">')
+        f.write(tabla1_html)
+        f.write('</div>')
+        f.write(nota_ejecutiva.replace('<div ', '<div class="nota-ejecutiva-panel" ', 1))
+        f.write('</div>')
+        if grafico_html:
+            f.write('<div class="baysa-panel"><div class="baysa-table baysa-plot-interactive">')
+            f.write(grafico_html)
+            f.write('</div></div>')
+        f.write('</div></body></html>')
+
+    temp_html1.unlink(missing_ok=True)
+    if temp_html3.exists():
+        temp_html3.unlink(missing_ok=True)
+    return ruta_archivo
+
 def main():
     """Genera el dashboard consolidado."""
     
@@ -1370,110 +1464,8 @@ def main():
     )
 
 
-    # Exportar tabla ejecutiva y gráfico BAYSA
-    from grafico_etapa_estatus_baysa import crear_grafico_etapa_estatus_baysa
-    df_baysa = df[df['CONTRATISTA'] == 'BAYSA']
-    if not df_baysa.empty:
-        timestamp_simple = datetime.now().strftime("%Y%m%d_%H%M%S")
-        nombre_archivo = f"analisis_completo_baysa_{timestamp_simple}.html"
-        ruta_archivo = Path("output/tablas") / nombre_archivo
-
-        def _plotly_download_config(filename: str) -> dict:
-            config_interactive = dict(PLOTLY_CONFIG_INTERACTIVE)
-            config_interactive["toImageButtonOptions"] = dict(
-                PLOTLY_CONFIG_INTERACTIVE.get("toImageButtonOptions", {})
-            )
-            config_interactive["toImageButtonOptions"]["filename"] = filename
-            return config_interactive
-
-        # Crear tabla ejecutiva BAYSA
-        fig_baysa = crear_tabla_individual_contratista(df, 'BAYSA', config, semana_corte, include_nota_descarga=False)
-        # Crear tabla de entregas BAYSA
-        fig_entregas = crear_tabla_entregas_baysa(df, config)
-        # Crear gráfico de barras agrupadas BAYSA
-        # IMPORTANTE: pasar df_baysa, no df
-        fig_grafico = crear_grafico_etapa_estatus_baysa(df_baysa, config)
-
-        # Exportar a HTML temporales
-        temp_html1 = ruta_archivo.with_suffix('.temp1.html')
-        temp_html2 = ruta_archivo.with_suffix('.temp2.html')
-        temp_html3 = ruta_archivo.with_suffix('.temp3.html')
-        fig_baysa.write_html(
-            str(temp_html1),
-            include_plotlyjs='cdn',
-            full_html=False,
-            config=_plotly_download_config("resumen_baysa")
-        )
-        if fig_entregas is not None:
-            fig_entregas.write_html(str(temp_html2), include_plotlyjs=False, full_html=False, config={"displayModeBar": False, "staticPlot": True})
-        if fig_grafico is not None:
-            fig_grafico.write_html(
-                str(temp_html3),
-                include_plotlyjs=False,
-                full_html=False,
-                config=_plotly_download_config("resumen_conteo_baysa")
-            )
-        # Nota Ejecutiva HTML
-        nota_ejecutiva = '''
-        <div style="background:#FFF6EA; border-left:4px solid #F6A623; padding:10px 18px; margin:12px 0 18px 0; font-family:Segoe UI,Arial,sans-serif;">
-            <span style="font-size:17px; font-weight:bold; color:#E67C00; vertical-align:middle; display:inline-block;">
-                <span style="font-size:1.3em; margin-right:7px; vertical-align:middle;">&#9888;</span> Nota Ejecutiva: Observaciones Críticas
-            </span>
-            <div style="font-size:14px; color:#222; margin-top:2px;">
-            <p style="margin:0 0 8px 0;">Las observaciones identificadas en la columna OBSERVADO se concentran principalmente en tres categorías críticas para la trazabilidad del dossier: <b>TOPOGRAFÍA</b>, <b>PLANOS AS-BUILT</b> y <b>PRODUCTO TERMINADO</b>. La ausencia de estas secciones compromete directamente la verificación de trazabilidad y cumplimiento normativo, representando un riesgo de no conformidad en auditorías y revisiones de calidad.</p>
-            <p style="margin:0;"><b>Peso (ton):</b> El indicador registra el peso total del bloque, pendiente la homologación de entregas parciales una vez se integren los registros del dossier para asegurar la integridad metrológica de la medición.</p>
-            </div>
-        </div>
-        '''
-        encabezado = f'''
-        <div style="text-align:center; margin-top:24px; margin-bottom:8px;">
-            <span style="font-size:2.1em; font-weight:bold; color:#222; font-family:Segoe UI,Arial,sans-serif; vertical-align:middle;">
-                <span style="vertical-align:middle;">&#128202;</span> Análisis Completo - BAYSA
-            </span>
-            <div style="font-size:1.08em; color:#444; margin-top:3px;">Resumen, Plan de Entregas y Cronograma</div>
-        </div>
-        '''
-        # Leer tablas Plotly generadas
-        with open(temp_html1, encoding='utf-8') as f:
-            tabla1_html = f.read()
-        tabla2_html = ''
-        if fig_entregas is not None:
-            with open(temp_html2, encoding='utf-8') as f:
-                tabla2_html = f.read()
-        grafico_html = ''
-        if fig_grafico is not None:
-            with open(temp_html3, encoding='utf-8') as f:
-                grafico_html = f.read()
-        # Unir todo y exportar
-        with open(ruta_archivo, 'w', encoding='utf-8') as f:
-            f.write('<html><head><meta charset="utf-8"><title>Análisis Completo BAYSA</title>')
-            f.write('<style>body{background:#fafbfc;} .baysa-panel{max-width:1200px;margin:0 auto 6px auto;padding:0 0 0 0;background:#fff;border-radius:10px;box-shadow:0 2px 8px #0001;overflow:hidden;} .baysa-table{padding:18px 18px 0 18px; min-width:1050px; max-width:1150px;} .nota-ejecutiva-panel{margin:0;padding:0;border-radius:0 0 10px 10px;} .baysa-table .js-plotly-plot{overflow:visible!important;} .baysa-table .modebar{pointer-events:auto!important;} </style>')
-            f.write('</head><body>')
-            f.write(encabezado)
-            f.write('<div style="max-width:1200px; margin:0 auto;">')
-            # Panel 1: Executive summary table + note inside panel
-            f.write('<div class="baysa-panel">')
-            f.write('<div class="baysa-table baysa-plot-interactive">')
-            f.write(tabla1_html)
-            f.write('</div>')
-            f.write(nota_ejecutiva.replace('<div ', '<div class="nota-ejecutiva-panel" ', 1))
-            f.write('</div>')
-             # Panel2: Gráfico de barras agrupadas
-            if grafico_html:
-                f.write('<div class="baysa-panel"><div class="baysa-table baysa-plot-interactive">')
-                f.write(grafico_html)
-                f.write('</div></div>')
-            # Panel 3: Pending deliveries table
-            if tabla2_html:
-                f.write('<div class="baysa-panel"><div class="baysa-table">')
-                f.write(tabla2_html)
-                f.write('</div></div>')
-            f.write('</div></body></html>')
-        temp_html1.unlink(missing_ok=True)
-        if temp_html2.exists():
-            temp_html2.unlink(missing_ok=True)
-        if temp_html3.exists():
-            temp_html3.unlink(missing_ok=True)
+    ruta_archivo = regenerar_poster_principal_baysa(semana_corte, output_dir=output_dir)
+    if ruta_archivo is not None:
         print(f"✅ Tabla ejecutiva y gráfico BAYSA generados: {ruta_archivo}")
 
     print(f"{'='*60}")

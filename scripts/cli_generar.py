@@ -48,6 +48,50 @@ def print_info(text: str):
     print(f"[INFO] {text}")
 
 
+def podar_output_automatico(output_dir: Path) -> None:
+    """Poda salidas para ahorrar espacio manteniendo un unico poster BAYSA."""
+    objetivos = {
+        output_dir / "historico": 1,
+        output_dir / "dashboards": 1,
+    }
+
+    for carpeta, mantener in objetivos.items():
+        if not carpeta.exists():
+            continue
+
+        archivos = sorted(
+            carpeta.rglob("*"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        archivos = [p for p in archivos if p.is_file()]
+
+        if len(archivos) <= mantener:
+            continue
+
+        for archivo in archivos[mantener:]:
+            archivo.unlink(missing_ok=True)
+
+    tablas_dir = output_dir / "tablas"
+    if tablas_dir.exists():
+        html_tablas = [p for p in tablas_dir.glob("*.html") if p.is_file()]
+        preferidos = sorted(
+            [p for p in html_tablas if "baysa" in p.name.lower() and "jamar" not in p.name.lower()],
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        conservar = set(preferidos[:1])
+
+        for archivo in html_tablas:
+            if archivo not in conservar:
+                archivo.unlink(missing_ok=True)
+
+    cache_backups = output_dir / "cache_backups"
+    if cache_backups.exists():
+        import shutil
+        shutil.rmtree(cache_backups)
+
+
 def main():
     """Genera todos los dashboards para una semana específica."""
     
@@ -157,6 +201,12 @@ def main():
     except Exception as e:
         print_error(f"Error generando dashboard consolidado: {e}")
         sys.exit(1)
+
+    # Poda automática para evitar crecimiento de output/ entre corridas
+    output_dir = PROJECT_ROOT / "output"
+    podar_output_automatico(output_dir=output_dir)
+    print_info("Poda automática aplicada: historico=1, tablas=1, dashboards=1")
+    print_info("cache_backups eliminado para liberar espacio")
     
     # Mensaje final
     print_header("[OK] TODOS LOS DASHBOARDS GENERADOS EXITOSAMENTE")
