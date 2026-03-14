@@ -1,9 +1,34 @@
-const REFRESH_MS = 15000;
+const REFRESH_MS = 10 * 60 * 60 * 1000;
+let ACCESS_KEY = sessionStorage.getItem("dossier_access_key") || "";
+
+const urlParams = new URLSearchParams(window.location.search);
+const queryKey = urlParams.get("k");
+if (queryKey) {
+  ACCESS_KEY = queryKey;
+  sessionStorage.setItem("dossier_access_key", ACCESS_KEY);
+  urlParams.delete("k");
+  const cleaned = `${window.location.pathname}${urlParams.toString() ? `?${urlParams.toString()}` : ""}`;
+  window.history.replaceState({}, "", cleaned);
+}
+
+function authHeaders() {
+  const headers = {};
+  if (ACCESS_KEY) {
+    headers["x-access-key"] = ACCESS_KEY;
+  }
+  return headers;
+}
+
+function withAccessKey(url) {
+  if (!ACCESS_KEY) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}k=${encodeURIComponent(ACCESS_KEY)}`;
+}
 
 async function postJson(url, payload) {
-  const response = await fetch(url, {
+  const response = await fetch(withAccessKey(url), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(payload),
   });
 
@@ -114,11 +139,41 @@ function autoResizePosters() {
 }
 
 async function getJson(url) {
-  const response = await fetch(url, { cache: "no-store" });
+  const response = await fetch(withAccessKey(url), { cache: "no-store", headers: { ...authHeaders() } });
   if (!response.ok) {
     throw new Error(`Error ${response.status} en ${url}`);
   }
   return response.json();
+}
+
+function initAccessPanel() {
+  const accessPanel = document.getElementById("accessPanel");
+  const accessForm = document.getElementById("accessForm");
+  const accessInput = document.getElementById("accessKeyInput");
+  const accessMessage = document.getElementById("accessMessage");
+
+  if (!accessPanel || !accessForm || !accessInput || !accessMessage) return;
+
+  const setProtected = (enabled) => {
+    accessPanel.classList.toggle("hidden", !enabled);
+  };
+
+  window.__setProtectedView = setProtected;
+
+  accessForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    ACCESS_KEY = accessInput.value.trim();
+    sessionStorage.setItem("dossier_access_key", ACCESS_KEY);
+    accessMessage.textContent = "Verificando clave...";
+    try {
+      await refreshAll();
+      setProtected(false);
+      accessMessage.textContent = "Acceso concedido.";
+    } catch {
+      setProtected(true);
+      accessMessage.textContent = "Clave inválida o servicio no disponible.";
+    }
+  });
 }
 
 async function initForm() {
@@ -226,14 +281,35 @@ async function refreshAll() {
 
     const now = new Date();
     lastRefresh.textContent = `Actualizado: ${now.toLocaleString("es-MX")}`;
+    if (window.__setProtectedView) {
+      window.__setProtectedView(false);
+    }
   } catch (err) {
+    if (String(err.message || "").includes("Error 401")) {
+      healthBadge.textContent = "Acceso requerido";
+      healthBadge.style.background = "#fff2e8";
+      healthBadge.style.color = "#a55010";
+      lastRefresh.textContent = "Autenticacion requerida para continuar.";
+      if (window.__setProtectedView) {
+        window.__setProtectedView(true);
+      }
+      throw err;
+    }
     healthBadge.textContent = "No disponible";
     healthBadge.style.background = "#fdeaea";
     healthBadge.style.color = "#8c1f1f";
     lastRefresh.textContent = `Error: ${err.message}`;
+    throw err;
   }
 }
 
-refreshAll();
+initAccessPanel();
+refreshAll().catch(() => null);
 initForm();
+const refreshNow = document.getElementById("refreshNow");
+if (refreshNow) {
+  refreshNow.addEventListener("click", () => {
+    refreshAll();
+  });
+}
 setInterval(refreshAll, REFRESH_MS);

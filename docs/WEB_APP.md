@@ -27,6 +27,12 @@ python cli.py run-web
 
 - http://localhost:8000
 
+## Presentacion (modo ejecutivo)
+
+- Refresco automatico cada 10 horas.
+- Boton `Actualizar ahora` para refresco manual en vivo.
+- Poster principal BAYSA con scroll optimizado.
+
 ## Enlace publico en vivo (Opcion 1)
 
 Con la app corriendo en el puerto 8000:
@@ -45,12 +51,28 @@ Comparte esa URL para visualizar el avance en vivo.
 
 - GET /api/health
 - GET /api/summary
-- GET /api/status-distribution
-- GET /api/latest-rows?contractor=BAYSA&limit=12
-- GET /api/latest-rows?contractor=JAMAR&limit=12
+- GET /api/tablas-posters
+- GET /api/baysa-form-meta
+- POST /api/baysa-block-status
+- GET /api/baysa-status-history
+
+## Acceso protegido (Fase 3)
+
+Puedes proteger la API con una clave compartida:
+
+```bash
+$env:DOSSIER_WEB_ACCESS_KEY="tu_clave_segura"
+python cli.py run-web
+```
+
+Si la clave esta activa:
+
+- El frontend pedira autenticacion.
+- La clave se envia por header (`x-access-key`), no se requiere exponerla en URL.
+- Opcionalmente puedes abrir con `?k=tu_clave` y el frontend la guardara en sesion.
 
 ## Notas
 
-- El frontend refresca automaticamente cada 15 segundos.
+- El frontend refresca automaticamente cada 10 horas y permite refresco manual.
 - Si detienes la app local o cierras el tunel, el enlace publico deja de funcionar.
 - Esta fase no modifica tus flujos de generacion ni Streamlit.

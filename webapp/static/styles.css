@@ -16,6 +16,10 @@
   box-sizing: border-box;
 }
 
+.hidden {
+  display: none;
+}
+
 body {
   margin: 0;
   font-family: "Space Grotesk", "Segoe UI", sans-serif;
@@ -77,6 +81,21 @@ body {
   font-size: 0.9rem;
 }
 
+.btn-refresh {
+  border: 1px solid #d4e3e1;
+  background: #ffffff;
+  color: #0a6f68;
+  font: inherit;
+  font-weight: 700;
+  padding: 8px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.btn-refresh:hover {
+  background: #eef8f6;
+}
+
 .muted {
   color: var(--muted);
   font-family: "IBM Plex Mono", Consolas, monospace;
@@ -89,6 +108,11 @@ body {
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   padding: 18px 20px;
+}
+
+.access-panel {
+  border: 1px solid #f0d9c2;
+  background: linear-gradient(180deg, #fffdf9, #fff);
 }
 
 .panel h2,

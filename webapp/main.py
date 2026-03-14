@@ -4,10 +4,12 @@ from datetime import datetime
 import os
 from pathlib import Path
 import re
+import json
 from typing import Dict, List, Optional
 
 import pandas as pd
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -21,6 +23,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "webapp" / "static"
 OUTPUT_DIR = BASE_DIR / "output"
 TABLAS_DIR = OUTPUT_DIR / "tablas"
+STATUS_AUDIT_LOG = OUTPUT_DIR / "exports" / "status_changes_baysa.jsonl"
+API_ACCESS_KEY = os.getenv("DOSSIER_WEB_ACCESS_KEY", "").strip()
 
 CSV_PATHS: Dict[str, Path] = {
     "BAYSA": BASE_DIR / "data" / "contratistas" / "BAYSA" / "ctrl_dosieres_BAYSA_normalizado.csv",
@@ -63,6 +67,32 @@ app = FastAPI(
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 app.mount("/output", StaticFiles(directory=str(OUTPUT_DIR)), name="output")
+
+
+@app.middleware("http")
+async def optional_api_key_guard(request: Request, call_next):
+    if not API_ACCESS_KEY:
+        return await call_next(request)
+
+    if request.url.path.startswith("/api"):
+        provided_key = request.headers.get("x-access-key") or request.query_params.get("k", "")
+        if provided_key != API_ACCESS_KEY:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "No autorizado. Usa la clave de acceso del portal."},
+            )
+
+    response = await call_next(request)
+
+    # Headers ligeros de endurecimiento para despliegue web local/publicado
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+    if request.url.path.startswith("/api"):
+        response.headers["Cache-Control"] = "no-store"
+
+    return response
 
 
 def _normalizar_estatus(df: pd.DataFrame) -> pd.DataFrame:
@@ -175,6 +205,19 @@ def _regenerar_vista_baysa() -> Dict[str, object]:
         return {"ok": False, "message": f"CSV actualizado, pero falló la regeneración ligera: {exc}"}
 
 
+def _append_status_change_log(bloque: str, estatus_anterior: str, estatus_nuevo: str) -> None:
+    STATUS_AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
+    row = {
+        "timestamp": datetime.now().isoformat(),
+        "bloque": bloque,
+        "estatus_anterior": estatus_anterior,
+        "estatus_nuevo": estatus_nuevo,
+        "semana": _inferir_semana_actual() or "N/A",
+    }
+    with open(STATUS_AUDIT_LOG, "a", encoding="utf-8") as f:
+        f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
 @app.get("/")
 def home() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
@@ -233,6 +276,7 @@ def update_baysa_block_status(record: BaysaStatusUpdateIn) -> Dict[str, object]:
     crear_backup_automatico(ruta, mantener_ultimos=10)
     df_actual.loc[mask, "ESTATUS"] = record.estatus
     df_actual.to_csv(ruta, index=False, encoding="utf-8-sig")
+    _append_status_change_log(bloque, estatus_anterior, record.estatus)
     regeneracion = _regenerar_vista_baysa()
 
     return {
@@ -241,6 +285,25 @@ def update_baysa_block_status(record: BaysaStatusUpdateIn) -> Dict[str, object]:
         "metrics": _serializar_metricas(df_actual),
         "regeneration": regeneracion,
     }
+
+
+@app.get("/api/baysa-status-history")
+def baysa_status_history(limit: int = Query(default=25, ge=1, le=200)) -> Dict[str, object]:
+    if not STATUS_AUDIT_LOG.exists():
+        return {"count": 0, "items": []}
+
+    with open(STATUS_AUDIT_LOG, "r", encoding="utf-8") as f:
+        lines = [line.strip() for line in f.readlines() if line.strip()]
+
+    items = []
+    for line in lines[-limit:]:
+        try:
+            items.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+
+    items.reverse()
+    return {"count": len(items), "items": items}
 
 
 @app.get("/api/summary")
