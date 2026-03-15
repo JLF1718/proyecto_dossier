@@ -1,0 +1,23 @@
+[Unit]
+Description=QA Platform Dash Dashboard
+After=network.target qa_backend.service
+Requires=qa_backend.service
+
+[Service]
+Type=simple
+User=qa
+Group=www-data
+WorkingDirectory=/opt/proyecto_dossier
+Environment="PYTHONUNBUFFERED=1"
+Environment="DASH_HOST=0.0.0.0"
+Environment="DASH_PORT=8050"
+Environment="DASH_DEBUG=false"
+EnvironmentFile=-/opt/proyecto_dossier/.env
+ExecStart=/opt/proyecto_dossier/.venv/bin/python dashboard/app.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

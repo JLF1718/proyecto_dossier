@@ -1,0 +1,47 @@
+# ─────────────────────────────────────────────────────────────
+#  Makefile — QA Platform development tasks
+# ─────────────────────────────────────────────────────────────
+.PHONY: help install dev api dash db-init test lint clean
+
+PYTHON ?= python3
+PIP    ?= pip3
+
+help:
+	@echo ""
+	@echo "  QA Platform — Available commands"
+	@echo "  ─────────────────────────────────"
+	@echo "  make install   Install all Python dependencies"
+	@echo "  make dev       Start FastAPI + Dash in development mode"
+	@echo "  make api       Start FastAPI only (port 8000)"
+	@echo "  make dash      Start Dash only (port 8050)"
+	@echo "  make db-init   Initialise SQLite database tables"
+	@echo "  make test      Run pytest suite"
+	@echo "  make lint      Run ruff linter"
+	@echo "  make clean     Remove __pycache__ and .pyc files"
+	@echo ""
+
+install:
+	$(PIP) install -r requirements.txt
+
+dev:
+	bash run_dev.sh
+
+api:
+	uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+
+dash:
+	$(PYTHON) dashboard/app.py
+
+db-init:
+	$(PYTHON) -c "from database.session import init_db; init_db(); print('DB initialised.')"
+
+test:
+	pytest tests/ -v --tb=short
+
+lint:
+	ruff check . --fix
+
+clean:
+	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+	find . -name "*.pyc" -delete
+	@echo "Clean complete."

@@ -1,8 +1,89 @@
-# Control de Dossieres
+# QA Platform - Construction Quality Management
 
-Repositorio para captura, edición y reporte de dossieres de BAYSA y JAMAR.
+Plataforma modular para gestion QA/QC en construccion:
+
+- Control de dossieres
+- Control de soldadura
+- Control de concreto
+- Gestion de no conformidades (NC)
+
+La logica analitica historica del proyecto se mantiene en `core/` y `generators/`.
+La nueva arquitectura la envuelve en servicios modulares con FastAPI + Dash.
 
 ---
+
+## Arquitectura v2 (nueva)
+
+| Capa | Carpeta | Responsabilidad |
+|---|---|---|
+| API Backend | `backend/` | Endpoints REST (`/api/dossiers`, `/api/welds`, `/api/metrics`, `/api/ncforms`) |
+| Dashboard | `dashboard/` | Dash app interactiva con filtros y KPIs |
+| Modulos QA | `modules/` | Logica por disciplina (loader, metricas, dashboard) |
+| Analytics | `analytics/` | Procesamiento pandas y adaptadores de metricas |
+| Base de Datos | `database/` | Modelos SQLAlchemy + SQLite inicial |
+| Logica existente | `core/`, `generators/` | Fuente de verdad de metricas y reportes HTML |
+
+Documentacion tecnica completa: `docs/ARQUITECTURA_V2.md`
+
+Despliegue en Ubuntu (produccion): `docs/DEPLOY_UBUNTU.md`
+
+---
+
+## Ejecucion local (FastAPI + Dash)
+
+### 1) Instalar dependencias
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### 2) Configurar variables de entorno
+
+```bash
+cp .env.example .env
+```
+
+### 3) Inicializar base SQLite
+
+```bash
+make db-init
+# o
+python3 -c "from database.session import init_db; init_db()"
+```
+
+### 4) Levantar plataforma completa
+
+```bash
+make dev
+# o
+bash run_dev.sh
+```
+
+Servicios:
+
+- FastAPI docs: `http://localhost:8000/api/docs`
+- Dash app: `http://localhost:8050`
+
+---
+
+## Endpoints API principales
+
+- `GET /api/dossiers`
+- `GET /api/welds`
+- `GET /api/metrics`
+- `GET /api/ncforms`
+
+Tambien disponibles: rutas por contratista, metricas por etapa/contratista y `POST /api/ncforms`.
+
+---
+
+## Modo legado (se mantiene)
+
+El flujo anterior sigue disponible para operacion actual y compatibilidad.
+
+### Interfaces originales
 
 ## ¿Cómo funciona?
 
