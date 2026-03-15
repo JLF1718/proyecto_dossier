@@ -191,7 +191,7 @@ def update_dashboard(
     week: Optional[str],
 ):
     # KPI cards are mission-critical: keep them available even if other API calls fail.
-    kpi_data = _fetch_dossier_kpis()
+    kpi_payload = _fetch_dossier_kpis()
 
     dossiers_error: Optional[Exception] = None
     weld_error: Optional[Exception] = None
@@ -222,8 +222,8 @@ def update_dashboard(
         discipline_options,
         system_options,
         week_options,
-        executive_cards(kpi_data),
-        quality_cards(kpi_data, weld_metrics),
+        executive_cards(kpi_payload),
+        quality_cards(kpi_payload, weld_metrics),
         progress_figure(filtered) if not filtered.empty else empty_figure("Progreso de entrega", progress_message),
         welding_figure(weld_metrics) if weld_metrics else empty_figure("Inspecciones de soldadura", welding_message),
     )
