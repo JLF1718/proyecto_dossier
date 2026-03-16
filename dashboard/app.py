@@ -27,12 +27,16 @@ from backend.services.dossier_service import (
     compute_kpis,
     list_weekly_snapshots,
 )
+from backend.services.piece_signal_service import load_piece_signal_payload
 
 from dashboard.components.cards import (
     backlog_aging_summary,
     executive_report_pack,
     executive_cards,
     executive_summary_table,
+    physical_signal_cards,
+    physical_signal_comparison_table,
+    physical_signal_exceptions_table,
     historical_comparison_cards,
     quality_cards,
     risk_exception_cards,
@@ -49,6 +53,7 @@ from dashboard.components.figures import (
     snapshot_backlog_trend_figure,
     snapshot_released_trend_figure,
     snapshot_released_weight_trend_figure,
+    physical_signal_weekly_trend_figure,
     status_by_block_figure,
     status_by_stage_figure,
     weekly_released_dossiers_figure,
@@ -61,6 +66,7 @@ from dashboard.layout import create_layout
 
 _PROCESSED_CSV_PATH = _PROJECT_ROOT / "data" / "processed" / "baysa_dossiers_clean.csv"
 _DASH_ASSETS_PATH = _PROJECT_ROOT / "assets"
+_PHYSICAL_SIGNAL_ENABLED = os.getenv("QA_ENABLE_PHYSICAL_SIGNAL", "1").strip().lower() in {"1", "true", "yes", "on"}
 
 _APPROVED = {"approved", "liberado", "aprobado", "aceptado"}
 _IN_REVIEW = {
@@ -140,6 +146,13 @@ def _apply_local_csv_filters(
     return out
 
 
+def _piece_stage_category(series: pd.Series) -> pd.Series:
+    out = pd.Series("", index=series.index, dtype="object")
+    numeric = pd.to_numeric(series, errors="coerce")
+    out.loc[numeric.notna()] = "Stage " + numeric.loc[numeric.notna()].astype(int).astype(str)
+    return out
+
+
 app = dash.Dash(
     __name__,
     assets_folder=str(_DASH_ASSETS_PATH),
@@ -169,6 +182,7 @@ def update_language_store(language_value: Optional[str]) -> Dict[str, str]:
     Output("export-banner-subtitle", "children"),
     Output("section-executive-overview", "children"),
     Output("section-weekly-management", "children"),
+    Output("section-physical-signal", "children"),
     Output("section-risk-exceptions", "children"),
     Output("section-historical-comparison", "children"),
     Output("section-dossier-analysis", "children"),
@@ -211,6 +225,7 @@ def update_static_labels(language_store: Optional[Dict[str, str]]):
         t(lang, "export.banner.subtitle"),
         t(lang, "section.executive_overview"),
         t(lang, "section.weekly_management"),
+        t(lang, "section.physical_signal"),
         t(lang, "section.risk_exceptions"),
         t(lang, "section.historical_comparison"),
         t(lang, "section.dossier_analysis"),
@@ -272,9 +287,11 @@ def update_presentation_mode(toggle_value: Optional[list[str]]) -> str:
     Output("filter-compare-week", "options"),
     Output("executive-kpis", "children"),
     Output("weekly-management-kpis", "children"),
+    Output("physical-signal-kpis", "children"),
     Output("risk-exception-kpis", "children"),
     Output("historical-comparison-kpis", "children"),
     Output("quality-kpis", "children"),
+    Output("physical-signal-weekly-graph", "figure"),
     Output("weekly-release-count-graph", "figure"),
     Output("weekly-release-weight-graph", "figure"),
     Output("cumulative-approved-growth-graph", "figure"),
@@ -285,6 +302,8 @@ def update_presentation_mode(toggle_value: Optional[list[str]]) -> str:
     Output("snapshot-weight-trend-graph", "figure"),
     Output("backlog-aging-summary", "children"),
     Output("stagnant-groups-summary", "children"),
+    Output("physical-signal-exceptions", "children"),
+    Output("physical-signal-comparison-table", "children"),
     Output("stage-status-graph", "figure"),
     Output("block-status-graph", "figure"),
     Output("weekly-progress-graph", "figure"),
@@ -387,6 +406,31 @@ def update_dashboard(
         language=lang,
     )
 
+    piece_payload = {"kpis": {}, "week_summary": [], "comparison": [], "exceptions": []}
+    if _PHYSICAL_SIGNAL_ENABLED:
+        raw_piece = load_piece_signal_payload(rebuild_if_missing=True)
+        comparison_df = raw_piece.get("comparison", pd.DataFrame()).copy()
+        week_df = raw_piece.get("week_summary", pd.DataFrame()).copy()
+        exceptions_df = raw_piece.get("exceptions", pd.DataFrame()).copy()
+
+        if not comparison_df.empty:
+            comparison_df["stage_category"] = _piece_stage_category(comparison_df.get("etapa", pd.Series(dtype="object")))
+            if discipline:
+                comparison_df = comparison_df[comparison_df["stage_category"] == discipline]
+            if system:
+                comparison_df = comparison_df[comparison_df["family"].astype(str) == system]
+
+        if not exceptions_df.empty and not comparison_df.empty and "block" in exceptions_df.columns:
+            allowed_blocks = set(comparison_df["block"].astype(str).tolist())
+            exceptions_df = exceptions_df[exceptions_df["block"].astype(str).isin(allowed_blocks)]
+
+        piece_payload = {
+            "kpis": raw_piece.get("kpis", {}),
+            "week_summary": week_df.to_dict("records") if not week_df.empty else [],
+            "comparison": comparison_df.to_dict("records") if not comparison_df.empty else [],
+            "exceptions": exceptions_df.to_dict("records") if not exceptions_df.empty else [],
+        }
+
     return (
         contractor_options,
         discipline_options,
@@ -395,9 +439,11 @@ def update_dashboard(
         snapshot_options,
         executive_cards(kpi_payload, lang=lang),
         weekly_management_cards(weekly_payload, lang=lang),
+        physical_signal_cards(piece_payload, lang=lang),
         risk_exception_cards(weekly_payload, lang=lang),
         historical_comparison_cards(historical_payload, lang=lang),
         quality_cards(kpi_payload, lang=lang),
+        physical_signal_weekly_trend_figure(piece_payload, lang=lang),
         weekly_released_dossiers_figure(weekly_payload, lang=lang),
         weekly_released_weight_figure(weekly_payload, lang=lang),
         cumulative_approved_growth_figure(weekly_payload, lang=lang),
@@ -408,6 +454,8 @@ def update_dashboard(
         snapshot_released_weight_trend_figure(historical_payload, lang=lang),
         backlog_aging_summary(weekly_payload, lang=lang),
         stagnant_groups_summary(weekly_payload, lang=lang),
+        physical_signal_exceptions_table(piece_payload, lang=lang),
+        physical_signal_comparison_table(piece_payload, lang=lang),
         status_by_stage_figure(local_filtered, lang=lang),
         status_by_block_figure(local_filtered, lang=lang),
         weekly_progress_figure(local_filtered, lang=lang),

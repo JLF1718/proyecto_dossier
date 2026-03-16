@@ -228,6 +228,20 @@ def overview_page(lang: str = "en") -> dbc.Container:
                 [
                     html.H5(t(lang, "section.weekly_management"), id="section-weekly-management", className="qa-section-title mt-1 mb-2"),
                     html.Div(id="weekly-management-kpis", className="mb-3 qa-kpi-zone"),
+                    html.H6(t(lang, "section.physical_signal"), id="section-physical-signal", className="qa-section-title qa-section-title-muted mt-1 mb-2"),
+                    html.Div(id="physical-signal-kpis", className="mb-3 qa-kpi-zone"),
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                dbc.Card(
+                                    dbc.CardBody(dcc.Graph(id="physical-signal-weekly-graph", config=_GRAPH_CONFIG, style={"height": "320px"})),
+                                    className="qa-panel qa-chart-card h-100",
+                                ),
+                                xs=12,
+                                className="mb-3",
+                            ),
+                        ]
+                    ),
                     dbc.Row(
                         [
                             dbc.Col(
@@ -279,6 +293,7 @@ def overview_page(lang: str = "en") -> dbc.Container:
                 [
                     html.H5(t(lang, "section.risk_exceptions"), id="section-risk-exceptions", className="qa-section-title mt-1 mb-2"),
                     html.Div(id="risk-exception-kpis", className="mb-3 qa-kpi-zone"),
+                    html.Div(id="physical-signal-exceptions", className="mb-3"),
                     dbc.Row(
                         [
                             dbc.Col(html.Div(id="backlog-aging-summary", className="mb-3"), xs=12, lg=6),
@@ -292,6 +307,7 @@ def overview_page(lang: str = "en") -> dbc.Container:
                 [
                     html.H5(t(lang, "section.historical_comparison"), id="section-historical-comparison", className="qa-section-title mt-1 mb-2"),
                     html.Div(id="historical-comparison-kpis", className="mb-3 qa-kpi-zone"),
+                    html.Div(id="physical-signal-comparison-table", className="mb-3"),
                     dbc.Row(
                         [
                             dbc.Col(
