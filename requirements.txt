@@ -7,6 +7,7 @@
 pandas>=2.0.0
 numpy>=1.26.0
 openpyxl>=3.0.0         # Excel read/write
+pyarrow>=14.0.0         # parquet IO for processed data products
 PyYAML>=6.0
 
 # ── FastAPI backend ───────────────────────────────────────────

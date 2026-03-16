@@ -812,3 +812,197 @@ def executive_summary_table(summary_df: Any, lang: str = "en") -> dbc.Card:
         ),
         className="qa-panel qa-table-card",
     )
+
+
+def physical_signal_cards(payload: Dict[str, Any], lang: str = "en") -> html.Div:
+    kpis = payload.get("kpis", {})
+    indexed = float(kpis.get("indexed_weight_total", 0.0) or 0.0)
+    tagged = float(kpis.get("week_tagged_weight", 0.0) or 0.0)
+    coverage = float(kpis.get("week_trace_coverage_pct", 0.0) or 0.0) * 100.0
+    blank = float(kpis.get("blank_week_historic_weight", 0.0) or 0.0)
+
+    return html.Div(
+        dbc.Row(
+            [
+                _kpi_card(
+                    t(lang, "kpi.indexed_weight_total"),
+                    _fmt_tons(indexed / 1000.0),
+                    t(lang, "kpi.physical_signal_weight"),
+                    "primary",
+                    lg=3,
+                ),
+                _kpi_card(
+                    t(lang, "kpi.week_tagged_weight"),
+                    _fmt_tons(tagged / 1000.0),
+                    t(lang, "kpi.week_tagged_weight_desc"),
+                    "info",
+                    lg=3,
+                ),
+                _kpi_card(
+                    t(lang, "kpi.week_trace_coverage"),
+                    _fmt_pct(coverage),
+                    t(lang, "kpi.week_trace_coverage_desc"),
+                    "success",
+                    lg=3,
+                ),
+                _kpi_card(
+                    t(lang, "kpi.blank_week_historic_weight"),
+                    _fmt_tons(blank / 1000.0),
+                    t(lang, "kpi.blank_week_historic_weight_desc"),
+                    "warning",
+                    lg=3,
+                ),
+            ]
+        )
+    )
+
+
+def physical_signal_comparison_table(payload: Dict[str, Any], lang: str = "en") -> dbc.Card:
+    records = payload.get("comparison", [])
+    if not records:
+        return dbc.Card(
+            dbc.CardBody(html.Div(t(lang, "empty.no_data_selected_filters"), className="text-muted")),
+            className="qa-panel qa-table-card",
+        )
+
+    frame = pd.DataFrame(records)
+    display = pd.DataFrame(
+        {
+            "block": frame.get("block", pd.Series(dtype="object")).astype(str),
+            "family": frame.get("family", pd.Series(dtype="object")).fillna("-"),
+            "building": frame.get("building", pd.Series(dtype="object")).fillna("-"),
+            "etapa": frame.get("etapa", pd.Series(dtype="object")).fillna("-"),
+            "fase": frame.get("fase", pd.Series(dtype="object")).fillna("-"),
+            "documented_progress_pct": (pd.to_numeric(frame.get("documented_progress_pct", 0), errors="coerce").fillna(0.0) * 100.0).round(1),
+            "physical_signal_pct": (pd.to_numeric(frame.get("physical_signal_pct", 0), errors="coerce").fillna(0.0) * 100.0).round(1),
+            "alignment_status": frame.get("alignment_status", pd.Series(dtype="object")).astype(str),
+        }
+    )
+
+    columns = [
+        ("block", "block"),
+        ("family", "family"),
+        ("building", "building"),
+        ("etapa", "etapa"),
+        ("fase", "fase"),
+        ("documented_progress_pct", "documented_progress_pct"),
+        ("physical_signal_pct", "physical_signal_pct"),
+        ("alignment_status", "alignment_status"),
+    ]
+
+    table = display[[source for _, source in columns]].copy()
+    table = table.rename(columns={
+        "block": t(lang, "table.block"),
+        "family": t(lang, "table.building_family"),
+        "building": t(lang, "table.building"),
+        "etapa": t(lang, "table.stage"),
+        "fase": t(lang, "table.phase"),
+        "documented_progress_pct": t(lang, "table.documented_progress_pct"),
+        "physical_signal_pct": t(lang, "table.physical_signal_pct"),
+        "alignment_status": t(lang, "table.alignment_status"),
+    })
+
+    for pct_col in (t(lang, "table.documented_progress_pct"), t(lang, "table.physical_signal_pct")):
+        table[pct_col] = table[pct_col].map(lambda v: f"{float(v):.1f}%")
+
+    status_col = t(lang, "table.alignment_status")
+    table[status_col] = table[status_col].map(lambda s: t(lang, f"alignment.{s}") if s else "-")
+
+    return dbc.Card(
+        dbc.CardBody(
+            dash_table.DataTable(
+                data=table.to_dict("records"),
+                columns=[{"name": c, "id": c} for c in table.columns],
+                page_action="native",
+                page_size=10,
+                style_table={"overflowX": "auto"},
+                style_cell={
+                    "fontSize": "12px",
+                    "padding": "8px 10px",
+                    "fontFamily": "IBM Plex Sans, sans-serif",
+                    "border": "none",
+                    "whiteSpace": "normal",
+                    "height": "auto",
+                    "textAlign": "left",
+                },
+                style_header={
+                    "backgroundColor": "#eef3f8",
+                    "color": "#10222f",
+                    "fontWeight": "700",
+                    "borderBottom": "1px solid #9db4c7",
+                    "textTransform": "uppercase",
+                    "fontSize": "11px",
+                    "letterSpacing": "0.03em",
+                },
+                style_data={
+                    "backgroundColor": "#ffffff",
+                    "color": "#10222f",
+                    "borderBottom": "1px solid #d8e2eb",
+                },
+                style_data_conditional=[
+                    {"if": {"row_index": "odd"}, "backgroundColor": "#f8fbfd"},
+                ],
+            )
+        ),
+        className="qa-panel qa-table-card",
+    )
+
+
+def physical_signal_exceptions_table(payload: Dict[str, Any], lang: str = "en") -> dbc.Card:
+    records = payload.get("exceptions", [])
+    if not records:
+        return dbc.Card(
+            dbc.CardBody(html.Div(t(lang, "empty.no_data_selected_filters"), className="text-muted")),
+            className="qa-panel qa-table-card",
+        )
+
+    frame = pd.DataFrame(records)
+    table = pd.DataFrame(
+        {
+            t(lang, "table.exception_type"): frame.get("exception_type", pd.Series(dtype="object")).astype(str),
+            t(lang, "table.severity"): frame.get("severity", pd.Series(dtype="object")).astype(str),
+            t(lang, "table.block"): frame.get("block", pd.Series(dtype="object")).astype(str),
+            t(lang, "table.week"): frame.get("week", pd.Series(dtype="object")).fillna("-"),
+            t(lang, "table.details"): frame.get("details", pd.Series(dtype="object")).astype(str),
+        }
+    )
+    table[t(lang, "table.severity")] = table[t(lang, "table.severity")].str.upper()
+
+    return dbc.Card(
+        dbc.CardBody(
+            dash_table.DataTable(
+                data=table.to_dict("records"),
+                columns=[{"name": c, "id": c} for c in table.columns],
+                page_action="native",
+                page_size=8,
+                style_table={"overflowX": "auto"},
+                style_cell={
+                    "fontSize": "12px",
+                    "padding": "8px 10px",
+                    "fontFamily": "IBM Plex Sans, sans-serif",
+                    "border": "none",
+                    "whiteSpace": "normal",
+                    "height": "auto",
+                    "textAlign": "left",
+                },
+                style_header={
+                    "backgroundColor": "#eef3f8",
+                    "color": "#10222f",
+                    "fontWeight": "700",
+                    "borderBottom": "1px solid #9db4c7",
+                    "textTransform": "uppercase",
+                    "fontSize": "11px",
+                    "letterSpacing": "0.03em",
+                },
+                style_data={
+                    "backgroundColor": "#ffffff",
+                    "color": "#10222f",
+                    "borderBottom": "1px solid #d8e2eb",
+                },
+                style_data_conditional=[
+                    {"if": {"row_index": "odd"}, "backgroundColor": "#f8fbfd"},
+                ],
+            )
+        ),
+        className="qa-panel qa-table-card",
+    )

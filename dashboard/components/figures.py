@@ -645,3 +645,54 @@ def snapshot_released_weight_trend_figure(payload: Dict[str, Any], lang: str = "
         color="#0f6cbd",
         lang=lang,
     )
+
+
+def physical_signal_weekly_trend_figure(payload: Dict[str, Any], lang: str = "en") -> go.Figure:
+    records = payload.get("week_summary", []) if payload else []
+    if not records:
+        return empty_figure(t(lang, "figure.physical_signal_weekly.title"), t(lang, "figure.no_data"))
+
+    week_df = pd.DataFrame(records)
+    if week_df.empty or "week" not in week_df.columns:
+        return empty_figure(t(lang, "figure.physical_signal_weekly.title"), t(lang, "figure.no_data"))
+
+    week_df = week_df.sort_values("week").reset_index(drop=True)
+    x_labels = [f"W{int(w)}" for w in week_df["week"].tolist()]
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            x=x_labels,
+            y=week_df.get("indexed_weight", pd.Series([0] * len(week_df))).astype(float) / 1000.0,
+            marker_color="#2d6fb7",
+            name=t(lang, "figure.physical_signal_weekly.indexed_weight"),
+            opacity=0.82,
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=x_labels,
+            y=week_df.get("cumulative_weight_pct_vs_week_traceable_only", pd.Series([0] * len(week_df))).astype(float) * 100.0,
+            mode="lines+markers",
+            yaxis="y2",
+            line={"width": 3, "color": "#2e8540"},
+            marker={"size": 7},
+            name=t(lang, "figure.physical_signal_weekly.cumulative_pct"),
+        )
+    )
+    fig.update_layout(
+        template="plotly_white",
+        title=t(lang, "figure.physical_signal_weekly.title"),
+        xaxis_title=t(lang, "figure.physical_signal_weekly.x"),
+        yaxis={"title": t(lang, "figure.physical_signal_weekly.y_left")},
+        yaxis2={
+            "title": t(lang, "figure.physical_signal_weekly.y_right"),
+            "overlaying": "y",
+            "side": "right",
+            "range": [0, 105],
+        },
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0.0},
+        margin={"l": 12, "r": 12, "t": 64, "b": 42},
+        title_x=0.01,
+    )
+    return fig
