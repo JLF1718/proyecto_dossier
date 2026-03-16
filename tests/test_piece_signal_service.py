@@ -105,7 +105,7 @@ def test_transform_preserves_repeated_marca_and_blank_semana_rows():
 def test_block_enrichment_uses_block_only_and_sets_match_flag():
     dim_map, _ = _build_block_dim_map(_sample_dossier())
     raw = _sample_piece_raw().copy()
-    raw.loc[len(raw)] = {
+    extra_row = {
         "BLOQUE": "X_404",
         "Marca": "X",
         "Cant.": 1,
@@ -121,6 +121,8 @@ def test_block_enrichment_uses_block_only_and_sets_match_flag():
         "Columna1": "m",
         "Columna2": None,
     }
+    raw_records = raw.to_dict(orient="records")
+    raw = pd.DataFrame(raw_records + [extra_row], columns=raw.columns)
 
     clean = _transform_piece_index(raw, dim_map)
     missing_row = clean[clean["block"] == "X_404"].iloc[0]
