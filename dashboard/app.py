@@ -14,7 +14,7 @@ from typing import Any, Dict, Optional
 import dash
 import dash_bootstrap_components as dbc
 import pandas as pd
-from dash import Input, Output
+from dash import Input, Output, clientside_callback
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(_PROJECT_ROOT) not in sys.path:
@@ -48,6 +48,7 @@ from dashboard.i18n import normalize_lang, stage_label, t
 from dashboard.layout import create_layout
 
 _PROCESSED_CSV_PATH = _PROJECT_ROOT / "data" / "processed" / "baysa_dossiers_clean.csv"
+_DASH_ASSETS_PATH = _PROJECT_ROOT / "assets"
 
 _APPROVED = {"approved", "liberado", "aprobado", "aceptado"}
 _IN_REVIEW = {
@@ -129,6 +130,7 @@ def _apply_local_csv_filters(
 
 app = dash.Dash(
     __name__,
+    assets_folder=str(_DASH_ASSETS_PATH),
     external_stylesheets=[dbc.themes.FLATLY, dbc.icons.BOOTSTRAP],
     title="QA Platform Dashboard",
     suppress_callback_exceptions=True,
@@ -149,6 +151,10 @@ def update_language_store(language_value: Optional[str]) -> Dict[str, str]:
     Output("hero-kicker", "children"),
     Output("hero-title", "children"),
     Output("hero-subtitle", "children"),
+    Output("brand-subunit", "children"),
+    Output("export-banner-kicker", "children"),
+    Output("export-banner-title", "children"),
+    Output("export-banner-subtitle", "children"),
     Output("section-executive-overview", "children"),
     Output("section-weekly-management", "children"),
     Output("section-dossier-analysis", "children"),
@@ -165,6 +171,7 @@ def update_language_store(language_value: Optional[str]) -> Dict[str, str]:
     Output("language-selector", "options"),
     Output("presentation-mode-label", "children"),
     Output("presentation-mode-toggle", "options"),
+    Output("print-action-label", "children"),
     Input("language-store", "data"),
 )
 def update_static_labels(language_store: Optional[Dict[str, str]]):
@@ -179,6 +186,10 @@ def update_static_labels(language_store: Optional[Dict[str, str]]):
         t(lang, "hero.kicker"),
         t(lang, "hero.title"),
         t(lang, "hero.subtitle"),
+        t(lang, "brand.subunit"),
+        t(lang, "export.banner.kicker"),
+        t(lang, "export.banner.title"),
+        t(lang, "export.banner.subtitle"),
         t(lang, "section.executive_overview"),
         t(lang, "section.weekly_management"),
         t(lang, "section.dossier_analysis"),
@@ -198,7 +209,24 @@ def update_static_labels(language_store: Optional[Dict[str, str]]):
         ],
         t(lang, "presentation.mode"),
         [{"label": t(lang, "presentation.hint"), "value": "on"}],
+        t(lang, "export.print.action"),
     )
+
+
+clientside_callback(
+    """
+    function(nClicks) {
+        if (!nClicks) {
+            return window.dash_clientside.no_update;
+        }
+        window.print();
+        return "printed";
+    }
+    """,
+    Output("print-action-status", "children"),
+    Input("print-action", "n_clicks"),
+    prevent_initial_call=True,
+)
 
 
 @app.callback(
@@ -337,9 +365,11 @@ app.index_string = """
                 --brand-navy: #0b2a4a;
                 --brand-blue: #1f4e79;
                 --brand-cyan: #2f7e95;
+                --brand-gold: #b49552;
                 --brand-line: #9db4c7;
                 --qa-ink: #10222f;
                 --qa-surface: #eef3f8;
+                --qa-paper: #ffffff;
             }
       body {
         margin: 0;
@@ -355,7 +385,9 @@ app.index_string = """
                 letter-spacing: .008em;
       }
       .qa-shell {
-        padding: 18px;
+                padding: 18px;
+                max-width: 1480px;
+                margin: 0 auto;
       }
             .qa-hero {
                 border-top: 5px solid #66d0e2;
@@ -378,6 +410,20 @@ app.index_string = """
             .qa-hero .card-body {
                 position: relative;
                 z-index: 1;
+                display: grid;
+                gap: 1rem;
+            }
+            .qa-hero-topline {
+                display: flex;
+                align-items: flex-start;
+                justify-content: flex-start;
+                gap: 1rem;
+                flex-wrap: wrap;
+            }
+            .qa-hero-copy {
+                min-width: 0;
+                flex: 1 1 520px;
+                max-width: 920px;
             }
             .qa-hero-kicker {
                 color: #a9d9e4;
@@ -400,6 +446,136 @@ app.index_string = """
                 font-size: .88rem;
                 letter-spacing: .035em;
                 font-weight: 500;
+            }
+            .qa-brand-lockup {
+                display: inline-flex;
+                align-items: center;
+                gap: .85rem;
+                min-width: 245px;
+                padding: .72rem .86rem;
+                border: 1px solid rgba(255,255,255,.18);
+                border-radius: 14px;
+                background: rgba(255,255,255,.08);
+                backdrop-filter: blur(10px);
+            }
+            .qa-brand-media {
+                flex: 0 0 auto;
+            }
+            .qa-brand-logo {
+                display: block;
+                max-width: 100%;
+                max-height: 100%;
+                object-fit: contain;
+            }
+            .qa-logo-badge {
+                width: 70px;
+                height: 70px;
+                border-radius: 12px;
+                padding: 8px;
+                background: #ffffff;
+                border: 1px solid rgba(16,34,47,.14);
+                box-shadow: 0 1px 4px rgba(7,26,44,.18);
+                display: grid;
+                place-items: center;
+            }
+            .qa-logo-badge--compact {
+                width: 58px;
+                height: 58px;
+                padding: 6px;
+                border-radius: 10px;
+            }
+            .qa-brand-monogram {
+                width: 100%;
+                height: 100%;
+                border-radius: 14px;
+                display: grid;
+                place-items: center;
+                background: linear-gradient(145deg, rgba(180,149,82,.95), rgba(122,96,45,.95));
+                color: #ffffff;
+                font-family: 'Space Grotesk', sans-serif;
+                font-size: 1.15rem;
+                font-weight: 700;
+                letter-spacing: .08em;
+            }
+            .qa-brand-copy {
+                min-width: 0;
+            }
+            .qa-brand-wordmark {
+                color: #ffffff;
+                font-family: 'Space Grotesk', sans-serif;
+                font-size: 1.05rem;
+                font-weight: 700;
+                letter-spacing: .12em;
+            }
+            .qa-brand-subunit {
+                color: rgba(236,247,252,.86);
+                font-size: .76rem;
+                text-transform: uppercase;
+                letter-spacing: .08em;
+            }
+            .qa-export-banner {
+                display: none;
+                padding: .95rem 1rem;
+                border-radius: 14px;
+                background: linear-gradient(135deg, rgba(255,255,255,.16), rgba(255,255,255,.06));
+                border: 1px solid rgba(255,255,255,.14);
+            }
+            .qa-export-banner-row {
+                display: flex;
+                align-items: center;
+                gap: .9rem;
+            }
+            .qa-export-banner-media {
+                flex: 0 0 auto;
+            }
+            .qa-export-banner-copy {
+                min-width: 0;
+            }
+            .qa-export-banner-kicker {
+                color: #d7ebf2;
+                font-size: .72rem;
+                font-weight: 700;
+                letter-spacing: .14em;
+                text-transform: uppercase;
+                margin-bottom: .3rem;
+            }
+            .qa-export-banner-title {
+                color: #ffffff;
+                font-family: 'Space Grotesk', sans-serif;
+                font-size: 1.05rem;
+                font-weight: 700;
+                line-height: 1.2;
+                margin-bottom: .2rem;
+            }
+            .qa-export-banner-subtitle {
+                color: rgba(236,247,252,.9);
+                font-size: .82rem;
+                max-width: 74ch;
+            }
+            .qa-shell-toolbar .card-body {
+                display: grid;
+                gap: .4rem;
+            }
+            .qa-control-card {
+                border-radius: 14px;
+            }
+            .qa-export-actions {
+                display: flex;
+                align-items: center;
+                height: 100%;
+            }
+            .qa-print-button {
+                width: 100%;
+                min-height: 40px;
+                border: 1px solid rgba(11,42,74,.14);
+                border-radius: 10px;
+                background: linear-gradient(180deg, #ffffff, #f0f5fa);
+                color: var(--brand-navy);
+                font-weight: 600;
+                letter-spacing: .01em;
+            }
+            .qa-print-button:hover {
+                background: linear-gradient(180deg, #ffffff, #e7eff7);
             }
             .qa-filter-row {
                 padding: .55rem .35rem .2rem;
@@ -431,6 +607,9 @@ app.index_string = """
             .qa-export-ready {
                 background: #f5f8fb;
             }
+            .qa-export-ready .qa-export-banner {
+                display: block;
+            }
             .qa-export-ready .qa-hero {
                 box-shadow: 0 8px 18px rgba(9,26,45,.2);
             }
@@ -438,12 +617,23 @@ app.index_string = """
                 box-shadow: 0 4px 12px rgba(16,34,47,.08);
                 border-color: rgba(157,180,199,.62);
             }
+            .qa-export-ready .qa-filter-row {
+                display: none;
+            }
             .qa-export-ready .qa-kpi-zone {
                 border-bottom-color: rgba(157,180,199,.55);
             }
             .qa-export-ready .qa-section-title {
-                margin-top: .4rem !important;
-                margin-bottom: .55rem !important;
+                margin-top: .5rem !important;
+                margin-bottom: .65rem !important;
+                font-size: .88rem;
+                letter-spacing: .08em;
+            }
+            .qa-export-ready .qa-export-section--secondary {
+                display: none;
+            }
+            .qa-export-ready .modebar {
+                display: none !important;
             }
       .qa-panel {
                 border: 1px solid rgba(157,180,199,.48);
@@ -451,6 +641,18 @@ app.index_string = """
                 background: rgba(255,255,255,.94);
                 box-shadow: 0 9px 22px rgba(16,34,47,.08);
       }
+            .qa-kpi-card,
+            .qa-chart-card,
+            .qa-table-card,
+            .qa-hero,
+            .qa-export-banner {
+                    break-inside: avoid;
+                    page-break-inside: avoid;
+            }
+            .qa-chart-card .card-body,
+            .qa-table-card .card-body {
+                    padding: 1rem 1rem .9rem;
+            }
       .qa-kpi-value {
                 font-family: 'Space Grotesk', sans-serif;
                 font-size: clamp(1.8rem, 3.2vw, 2.35rem);
@@ -467,11 +669,16 @@ app.index_string = """
                 letter-spacing: .02em;
       }
             @media print {
+                @page {
+                    size: A4 landscape;
+                    margin: 12mm;
+                }
                 body {
                     background: #ffffff !important;
                 }
                 .qa-shell {
-                    padding: 10mm;
+                    padding: 0;
+                    max-width: none;
                 }
                 .qa-hero {
                     box-shadow: none;
@@ -491,16 +698,64 @@ app.index_string = """
                 #presentation-mode-toggle {
                     display: none !important;
                 }
+                .qa-export-banner {
+                    display: block !important;
+                    background: #ffffff;
+                    border-color: #c7d4df;
+                }
+                .qa-logo-badge {
+                    border-color: #c7d4df;
+                    box-shadow: none;
+                }
+                .qa-export-banner-kicker,
+                .qa-export-banner-title,
+                .qa-export-banner-subtitle {
+                    color: #10222f;
+                }
+                .qa-export-section--secondary {
+                    display: none !important;
+                }
+                .qa-export-section--weekly,
+                .qa-export-section--analysis,
+                .qa-export-section--summary {
+                    break-before: page;
+                    page-break-before: always;
+                }
                 .qa-export-section {
                     break-inside: avoid;
                     page-break-inside: avoid;
                     margin-bottom: 8mm;
+                }
+                .qa-chart-card,
+                .qa-table-card,
+                .qa-kpi-card {
+                    break-inside: avoid;
+                    page-break-inside: avoid;
+                }
+                .modebar,
+                .dash-table-pagination {
+                    display: none !important;
+                }
+                .dash-table-container .dash-spreadsheet-container th,
+                .dash-table-container .dash-spreadsheet-container td {
+                    font-size: 11px !important;
+                    padding: 6px 8px !important;
                 }
             }
       @media (max-width: 900px) {
         .qa-shell {
           padding: 12px;
         }
+                .qa-hero-topline {
+                    flex-direction: column;
+                }
+                .qa-brand-lockup {
+                    width: 100%;
+                    min-width: 0;
+                }
+                .qa-export-banner-row {
+                    align-items: flex-start;
+                }
                 .qa-hero-kicker {
                     letter-spacing: .11em;
                 }
