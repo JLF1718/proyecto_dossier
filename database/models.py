@@ -17,7 +17,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import (
-    Boolean, DateTime, Float, ForeignKey,
+    JSON, Boolean, DateTime, Float, ForeignKey,
     Index, Integer, String, Text, func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -152,3 +152,31 @@ class AuditLog(Base):
 
     def __repr__(self) -> str:
         return f"<AuditLog {self.entity_type}:{self.entity_id} {self.field_changed}>"
+
+
+# ── Weekly management snapshots ──────────────────────────────────────────────
+
+class WeeklySnapshot(Base):
+    __tablename__ = "weekly_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    analysis_week: Mapped[int] = mapped_column(Integer, nullable=False, unique=True, index=True)
+    snapshot_label: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    source_file: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_row_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_dossiers: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    approved_dossiers: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    backlog_dossiers: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    released_this_week: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    released_weight_t_this_week: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    cumulative_released_weight_t: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    executive_summary_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    weekly_payload_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    def __repr__(self) -> str:
+        return f"<WeeklySnapshot W{self.analysis_week}>"

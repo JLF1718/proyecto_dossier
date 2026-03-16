@@ -20,13 +20,20 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from backend.services.dossier_service import build_weekly_management_payload
-from backend.services.dossier_service import compute_kpis
+from backend.services.dossier_service import (
+    build_executive_report_payload,
+    build_historical_comparison_payload,
+    build_weekly_management_payload,
+    compute_kpis,
+    list_weekly_snapshots,
+)
 
 from dashboard.components.cards import (
     backlog_aging_summary,
+    executive_report_pack,
     executive_cards,
     executive_summary_table,
+    historical_comparison_cards,
     quality_cards,
     stagnant_groups_summary,
     weekly_management_cards,
@@ -37,6 +44,10 @@ from dashboard.components.figures import (
     derive_building_family,
     derive_stage_category,
     executive_summary_frame,
+    snapshot_approval_trend_figure,
+    snapshot_backlog_trend_figure,
+    snapshot_released_trend_figure,
+    snapshot_released_weight_trend_figure,
     status_by_block_figure,
     status_by_stage_figure,
     weekly_released_dossiers_figure,
@@ -157,20 +168,26 @@ def update_language_store(language_value: Optional[str]) -> Dict[str, str]:
     Output("export-banner-subtitle", "children"),
     Output("section-executive-overview", "children"),
     Output("section-weekly-management", "children"),
+    Output("section-historical-comparison", "children"),
     Output("section-dossier-analysis", "children"),
     Output("section-executive-summary", "children"),
+    Output("section-executive-report-pack", "children"),
     Output("section-quality-signals", "children"),
     Output("filter-contractor-label", "children"),
     Output("filter-discipline-label", "children"),
     Output("filter-system-label", "children"),
     Output("filter-week-label", "children"),
+    Output("filter-compare-week-label", "children"),
     Output("filter-contractor", "placeholder"),
     Output("filter-discipline", "placeholder"),
     Output("filter-system", "placeholder"),
     Output("filter-week", "placeholder"),
+    Output("filter-compare-week", "placeholder"),
     Output("language-selector", "options"),
     Output("presentation-mode-label", "children"),
     Output("presentation-mode-toggle", "options"),
+    Output("management-history-label", "children"),
+    Output("management-history-toggle", "options"),
     Output("print-action-label", "children"),
     Input("language-store", "data"),
 )
@@ -192,23 +209,29 @@ def update_static_labels(language_store: Optional[Dict[str, str]]):
         t(lang, "export.banner.subtitle"),
         t(lang, "section.executive_overview"),
         t(lang, "section.weekly_management"),
+        t(lang, "section.historical_comparison"),
         t(lang, "section.dossier_analysis"),
         t(lang, "section.executive_summary"),
+        t(lang, "section.executive_report_pack"),
         t(lang, "section.quality_signals"),
         contractor,
         discipline,
         system,
         week,
+        t(lang, "filter.compare_week"),
         t(lang, "filter.placeholder", label=contractor.lower()),
         t(lang, "filter.placeholder", label=discipline.lower()),
         t(lang, "filter.placeholder", label=system.lower()),
         t(lang, "filter.placeholder", label=week.lower()),
+        t(lang, "filter.placeholder", label=t(lang, "filter.compare_week").lower()),
         [
             {"label": t(lang, "lang.en"), "value": "en"},
             {"label": t(lang, "lang.es"), "value": "es"},
         ],
         t(lang, "presentation.mode"),
         [{"label": t(lang, "presentation.hint"), "value": "on"}],
+        t(lang, "filter.history_mode"),
+        [{"label": t(lang, "history.mode_hint"), "value": "on"}],
         t(lang, "export.print.action"),
     )
 
@@ -243,13 +266,19 @@ def update_presentation_mode(toggle_value: Optional[list[str]]) -> str:
     Output("filter-discipline", "options"),
     Output("filter-system", "options"),
     Output("filter-week", "options"),
+    Output("filter-compare-week", "options"),
     Output("executive-kpis", "children"),
     Output("weekly-management-kpis", "children"),
+    Output("historical-comparison-kpis", "children"),
     Output("quality-kpis", "children"),
     Output("weekly-release-count-graph", "figure"),
     Output("weekly-release-weight-graph", "figure"),
     Output("cumulative-approved-growth-graph", "figure"),
     Output("cumulative-release-weight-graph", "figure"),
+    Output("snapshot-release-trend-graph", "figure"),
+    Output("snapshot-backlog-trend-graph", "figure"),
+    Output("snapshot-approval-trend-graph", "figure"),
+    Output("snapshot-weight-trend-graph", "figure"),
     Output("backlog-aging-summary", "children"),
     Output("stagnant-groups-summary", "children"),
     Output("stage-status-graph", "figure"),
@@ -257,11 +286,14 @@ def update_presentation_mode(toggle_value: Optional[list[str]]) -> str:
     Output("weekly-progress-graph", "figure"),
     Output("weekly-accum-graph", "figure"),
     Output("executive-summary-table", "children"),
+    Output("executive-report-pack", "children"),
     Input("language-store", "data"),
     Input("filter-contractor", "value"),
     Input("filter-discipline", "value"),
     Input("filter-system", "value"),
     Input("filter-week", "value"),
+    Input("management-history-toggle", "value"),
+    Input("filter-compare-week", "value"),
 )
 def update_dashboard(
     language_store: Optional[Dict[str, str]],
@@ -269,6 +301,8 @@ def update_dashboard(
     discipline: Optional[str],
     system: Optional[str],
     week: Optional[str],
+    history_toggle: Optional[list[str]],
+    compare_week: Optional[str],
 ):
     lang = normalize_lang((language_store or {}).get("lang"))
     local_df = _load_local_dossier_csv()
@@ -329,18 +363,44 @@ def update_dashboard(
         )
         week_options = [{"label": t(lang, "week.label", week=s), "value": str(s)} for s in semanas]
 
+    snapshot_options = [
+        {"label": t(lang, "week.label", week=int(item["analysis_week"])), "value": str(int(item["analysis_week"]))}
+        for item in reversed(list_weekly_snapshots())
+        if item.get("analysis_week") is not None
+    ]
+
+    history_mode = bool(history_toggle) and "on" in history_toggle
+    effective_compare_week = compare_week if history_mode else None
+    historical_payload = build_historical_comparison_payload(
+        management_filtered,
+        selected_week=week,
+        comparison_week=effective_compare_week,
+    )
+    report_payload = build_executive_report_payload(
+        management_filtered,
+        selected_week=week,
+        comparison_week=effective_compare_week,
+        language=lang,
+    )
+
     return (
         contractor_options,
         discipline_options,
         system_options,
         week_options,
+        snapshot_options,
         executive_cards(kpi_payload, lang=lang),
         weekly_management_cards(weekly_payload, lang=lang),
+        historical_comparison_cards(historical_payload, lang=lang),
         quality_cards(kpi_payload, lang=lang),
         weekly_released_dossiers_figure(weekly_payload, lang=lang),
         weekly_released_weight_figure(weekly_payload, lang=lang),
         cumulative_approved_growth_figure(weekly_payload, lang=lang),
         cumulative_released_weight_growth_figure(weekly_payload, lang=lang),
+        snapshot_released_trend_figure(historical_payload, lang=lang),
+        snapshot_backlog_trend_figure(historical_payload, lang=lang),
+        snapshot_approval_trend_figure(historical_payload, lang=lang),
+        snapshot_released_weight_trend_figure(historical_payload, lang=lang),
         backlog_aging_summary(weekly_payload, lang=lang),
         stagnant_groups_summary(weekly_payload, lang=lang),
         status_by_stage_figure(local_filtered, lang=lang),
@@ -348,6 +408,7 @@ def update_dashboard(
         weekly_progress_figure(local_filtered, lang=lang),
         weekly_accumulated_progress_figure(local_filtered, lang=lang),
         summary_table,
+        executive_report_pack(report_payload, lang=lang),
     )
 
 
@@ -632,6 +693,10 @@ app.index_string = """
             .qa-export-ready .qa-export-section--secondary {
                 display: none;
             }
+            .qa-report-header .card-body {
+                display: grid;
+                gap: .45rem;
+            }
             .qa-export-ready .modebar {
                 display: none !important;
             }
@@ -716,8 +781,10 @@ app.index_string = """
                     display: none !important;
                 }
                 .qa-export-section--weekly,
+                .qa-export-section--historical,
                 .qa-export-section--analysis,
-                .qa-export-section--summary {
+                .qa-export-section--summary,
+                .qa-export-section--report {
                     break-before: page;
                     page-break-before: always;
                 }

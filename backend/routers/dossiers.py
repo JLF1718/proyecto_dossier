@@ -11,7 +11,13 @@ import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.dependencies import verify_api_key
-from backend.services.dossier_service import load_dossiers
+from backend.services.dossier_service import (
+    build_executive_report_payload,
+    build_historical_comparison_payload,
+    list_weekly_snapshots,
+    load_dossiers,
+    weekly_management_payload,
+)
 
 router = APIRouter(
     prefix="/api/dossiers",
@@ -142,6 +148,63 @@ def dossier_kpis() -> Dict[str, Any]:
         return compute_kpis(df)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/snapshots", summary="List persisted weekly snapshots")
+def dossier_snapshots() -> Dict[str, Any]:
+    try:
+        items = list_weekly_snapshots()
+        return {
+            "total": len(items),
+            "items": items,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/weekly-management", summary="Weekly management payload")
+def dossier_weekly_management(
+    week: Optional[int] = Query(None, description="Analysis week to evaluate against current BAYSA data"),
+) -> Dict[str, Any]:
+    try:
+        return weekly_management_payload("BAYSA", selected_week=week)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/historical-comparison", summary="Historical weekly comparison payload")
+def dossier_historical_comparison(
+    week: Optional[int] = Query(None, description="Current analysis week from live BAYSA data"),
+    comparison_week: Optional[int] = Query(None, description="Stored snapshot week used as historical comparison"),
+) -> Dict[str, Any]:
+    try:
+        return build_historical_comparison_payload(selected_week=week, comparison_week=comparison_week)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/executive-report", summary="Executive report pack payload")
+def dossier_executive_report(
+    week: Optional[int] = Query(None, description="Analysis week from live BAYSA data"),
+    comparison_week: Optional[int] = Query(None, description="Stored snapshot week used for comparison"),
+    lang: str = Query("en", description="Response language hint for consumers (en or es)"),
+) -> Dict[str, Any]:
+    try:
+        return build_executive_report_payload(selected_week=week, comparison_week=comparison_week, language=lang)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

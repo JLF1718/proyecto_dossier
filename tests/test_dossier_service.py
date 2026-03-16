@@ -1,9 +1,13 @@
 import sys
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pandas as pd
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 from backend.services.dossier_service import (
     _build_backlog_aging_frame,
@@ -13,9 +17,14 @@ from backend.services.dossier_service import (
     _detect_stagnant_groups,
     _resolve_analysis_week,
     _standardize_baysa_processed,
+    build_executive_report_payload,
+    build_historical_comparison_payload,
+    build_or_update_weekly_snapshot,
     build_weekly_management_payload,
     compute_kpis,
+    list_weekly_snapshots,
 )
+from database.session import Base
 from scripts.normalize_baysa_dataset import _derive_in_contract_scope
 
 
@@ -37,6 +46,14 @@ def _weekly_df(rows: list[dict]) -> pd.DataFrame:
     frame["reference_week"] = frame["reference_week"].astype("Int64")
     frame["release_week"] = frame["release_week"].astype("Int64")
     return frame
+
+
+def _temp_session_factory():
+    temp_dir = TemporaryDirectory()
+    engine = create_engine(f"sqlite:///{Path(temp_dir.name) / 'test_snapshots.db'}", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(bind=engine)
+    factory = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    return temp_dir, factory
 
 
 def test_in_contract_scope_marks_double_dash_as_out_of_scope():
@@ -321,3 +338,148 @@ def test_weekly_management_payload_exposes_backlog_and_stagnant_summaries():
     assert payload["backlog_aging_summary"]["oldest_reference_week"] == 184
     assert payload["stagnant_groups_summary"]["stagnant_groups"] == 1
     assert payload["stagnant_groups_summary"]["total_open_backlog"] == 2
+
+
+def test_snapshot_creation_persists_metrics_and_summary():
+    temp_dir, session_factory = _temp_session_factory()
+    try:
+        df = _weekly_df(
+            [
+                {"status": "approved", "release_week": 190, "reference_week": 184, "weight_kg": 1000.0, "bloque": "PRO_01", "stage": "ETAPA_1"},
+                {"status": "pending", "reference_week": 190, "weight_kg": 250.0, "bloque": "SUE_01", "stage": "ETAPA_2"},
+            ]
+        )
+
+        snapshot = build_or_update_weekly_snapshot(selected_week=190, df=df, session_factory=session_factory)
+        all_snapshots = list_weekly_snapshots(session_factory=session_factory)
+
+        assert snapshot["analysis_week"] == 190
+        assert snapshot["created"] is True
+        assert snapshot["released_this_week"] == 1
+        assert snapshot["backlog_dossiers"] == 1
+        assert len(snapshot["executive_summary_table"]) >= 1
+        assert len(all_snapshots) == 1
+    finally:
+        temp_dir.cleanup()
+
+
+def test_snapshot_duplicate_week_requires_force_to_replace():
+    temp_dir, session_factory = _temp_session_factory()
+    try:
+        df = _weekly_df([
+            {"status": "approved", "release_week": 189, "reference_week": 184, "weight_kg": 1000.0, "bloque": "PRO_01", "stage": "ETAPA_1"},
+        ])
+
+        build_or_update_weekly_snapshot(selected_week=189, df=df, session_factory=session_factory)
+
+        with pytest.raises(ValueError, match="already exists"):
+            build_or_update_weekly_snapshot(selected_week=189, df=df, session_factory=session_factory)
+
+        updated = build_or_update_weekly_snapshot(selected_week=189, df=df, force=True, session_factory=session_factory)
+
+        assert updated["forced"] is True
+        assert updated["analysis_week"] == 189
+    finally:
+        temp_dir.cleanup()
+
+
+def test_historical_comparison_payload_uses_previous_and_selected_snapshots():
+    temp_dir, session_factory = _temp_session_factory()
+    try:
+        snapshot_188 = _weekly_df(
+            [
+                {"status": "approved", "release_week": 188, "reference_week": 182, "weight_kg": 1000.0, "bloque": "PRO_01", "stage": "ETAPA_1"},
+                {"status": "pending", "reference_week": 188, "bloque": "PRO_02", "stage": "ETAPA_1"},
+            ]
+        )
+        snapshot_189 = _weekly_df(
+            [
+                {"status": "approved", "release_week": 189, "reference_week": 183, "weight_kg": 1200.0, "bloque": "PRO_01", "stage": "ETAPA_1"},
+                {"status": "approved", "release_week": 189, "reference_week": 183, "weight_kg": 800.0, "bloque": "SUE_01", "stage": "ETAPA_2"},
+                {"status": "pending", "reference_week": 189, "bloque": "SUE_02", "stage": "ETAPA_2"},
+            ]
+        )
+        live_190 = _weekly_df(
+            [
+                {"status": "approved", "release_week": 190, "reference_week": 184, "weight_kg": 1500.0, "bloque": "PRO_01", "stage": "ETAPA_1"},
+                {"status": "approved", "release_week": 190, "reference_week": 184, "weight_kg": 900.0, "bloque": "SUE_01", "stage": "ETAPA_2"},
+                {"status": "pending", "reference_week": 189, "bloque": "PRO_02", "stage": "ETAPA_1"},
+                {"status": "in_review", "reference_week": 188, "bloque": "SUE_02", "stage": "ETAPA_2"},
+            ]
+        )
+
+        build_or_update_weekly_snapshot(selected_week=188, df=snapshot_188, session_factory=session_factory)
+        build_or_update_weekly_snapshot(selected_week=189, df=snapshot_189, session_factory=session_factory)
+
+        payload = build_historical_comparison_payload(
+            live_190,
+            selected_week=190,
+            comparison_week=188,
+            session_factory=session_factory,
+        )
+
+        assert payload["analysis_week"] == 190
+        assert payload["current_vs_previous"]["comparison_week"] == 189
+        assert payload["current_vs_selected"]["comparison_week"] == 188
+        assert payload["current_vs_previous"]["approval_delta"] == 0
+        assert payload["current_vs_selected"]["released_dossiers_delta"] == 1
+        assert payload["snapshot_status"]["snapshot_count"] == 2
+    finally:
+        temp_dir.cleanup()
+
+
+def test_historical_comparison_trend_summary_accumulates_available_snapshots():
+    temp_dir, session_factory = _temp_session_factory()
+    try:
+        for week, released, backlog, approved in [(187, 1, 3, 1), (188, 2, 2, 2), (189, 3, 1, 3)]:
+            rows = [{"status": "approved", "release_week": week, "reference_week": week - 2, "weight_kg": 1000.0, "bloque": f"PRO_{week}", "stage": "ETAPA_1"}] * released
+            rows += [{"status": "pending", "reference_week": week, "bloque": f"SUE_{week}_{index}", "stage": "ETAPA_2"} for index in range(backlog)]
+            build_or_update_weekly_snapshot(selected_week=week, df=_weekly_df(rows), session_factory=session_factory)
+
+        live = _weekly_df([
+            {"status": "approved", "release_week": 190, "reference_week": 188, "weight_kg": 1200.0, "bloque": "PRO_LIVE", "stage": "ETAPA_1"},
+            {"status": "approved", "release_week": 190, "reference_week": 188, "weight_kg": 800.0, "bloque": "SUE_LIVE_APPROVED", "stage": "ETAPA_2"},
+            {"status": "pending", "reference_week": 190, "bloque": "SUE_LIVE", "stage": "ETAPA_2"},
+        ])
+        payload = build_historical_comparison_payload(live, selected_week=190, session_factory=session_factory)
+
+        assert payload["trend_summary"]["snapshot_count"] == 4
+        assert payload["trend_summary"]["available_weeks"] == [187, 188, 189, 190]
+        assert payload["trend_summary"]["directions"]["approval"] == "up"
+        assert payload["trend_summary"]["directions"]["backlog"] in {"up", "down", "stable"}
+    finally:
+        temp_dir.cleanup()
+
+
+def test_executive_report_payload_contains_management_and_table_sections():
+    temp_dir, session_factory = _temp_session_factory()
+    try:
+        historical = _weekly_df([
+            {"status": "approved", "release_week": 189, "reference_week": 184, "weight_kg": 1000.0, "bloque": "PRO_01", "stage": "ETAPA_1"},
+            {"status": "pending", "reference_week": 189, "bloque": "SUE_01", "stage": "ETAPA_2"},
+        ])
+        live = _weekly_df([
+            {"status": "approved", "release_week": 190, "reference_week": 185, "weight_kg": 1500.0, "bloque": "PRO_01", "stage": "ETAPA_1"},
+            {"status": "approved", "release_week": 190, "reference_week": 185, "weight_kg": 600.0, "bloque": "SUE_01", "stage": "ETAPA_2"},
+            {"status": "pending", "reference_week": 189, "bloque": "SUE_02", "stage": "ETAPA_2"},
+        ])
+        build_or_update_weekly_snapshot(selected_week=189, df=historical, session_factory=session_factory)
+
+        report = build_executive_report_payload(
+            live,
+            selected_week=190,
+            comparison_week=189,
+            language="en",
+            session_factory=session_factory,
+        )
+
+        assert report["report_meta"]["analysis_week"] == 190
+        assert report["report_meta"]["comparison_week"] == 189
+        assert "weekly_management" in report
+        assert "historical_comparison" in report
+        assert len(report["weekly_highlights"]) == 4
+        assert isinstance(report["top_backlog_risks"], list)
+        assert isinstance(report["top_stagnant_groups"], list)
+        assert len(report["executive_summary_table"]) >= 1
+    finally:
+        temp_dir.cleanup()

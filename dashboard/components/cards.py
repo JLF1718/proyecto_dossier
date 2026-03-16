@@ -67,6 +67,18 @@ def _tone_for_delta(value: Any) -> str:
     return "secondary"
 
 
+def _tone_for_backlog_delta(value: Any) -> str:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "secondary"
+    if number < 0:
+        return "success"
+    if number > 0:
+        return "danger"
+    return "secondary"
+
+
 def _kpi_card(
     title: str,
     value: Any,
@@ -211,6 +223,231 @@ def weekly_management_cards(payload: Dict[str, Any], lang: str = "en") -> html.D
                 _kpi_card(t(lang, "kpi.weight_change_vs_prev"), _fmt_signed_tons(weight_change_vs_previous_week), t(lang, "kpi.delta_released_weight"), _tone_for_delta(weight_change_vs_previous_week)),
             ]
         )
+    )
+
+
+def historical_comparison_cards(payload: Dict[str, Any], lang: str = "en") -> html.Div:
+    current_vs_selected = payload.get("current_vs_selected", {})
+    current_vs_previous = payload.get("current_vs_previous", {})
+    comparison = current_vs_selected if current_vs_selected.get("available") else current_vs_previous
+    comparison_label = (
+        t(lang, "report.current_vs_selected")
+        if current_vs_selected.get("available")
+        else t(lang, "report.current_vs_previous")
+    )
+    comparison_week = comparison.get("comparison_week")
+    snapshot_status = payload.get("snapshot_status", {})
+    subtitle = f"{comparison_label}: {_fmt_week(payload.get('analysis_week'))} vs {_fmt_week(comparison_week)}"
+    coverage = t(lang, "report.snapshot_coverage_value", count=snapshot_status.get("snapshot_count", 0))
+
+    return html.Div(
+        [
+            html.Div(f"{subtitle} • {coverage}", className="qa-subtitle mb-2"),
+            dbc.Row(
+                [
+                    _kpi_card(
+                        t(lang, "kpi.released_delta_vs_snapshot"),
+                        _fmt_signed_int(comparison.get("released_dossiers_delta", 0)),
+                        comparison_label,
+                        _tone_for_delta(comparison.get("released_dossiers_delta", 0)),
+                    ),
+                    _kpi_card(
+                        t(lang, "kpi.weight_delta_vs_snapshot"),
+                        _fmt_signed_tons(comparison.get("released_weight_t_delta", 0.0)),
+                        comparison_label,
+                        _tone_for_delta(comparison.get("released_weight_t_delta", 0.0)),
+                    ),
+                    _kpi_card(
+                        t(lang, "kpi.backlog_delta_vs_snapshot"),
+                        _fmt_signed_int(comparison.get("backlog_delta", 0)),
+                        comparison_label,
+                        _tone_for_backlog_delta(comparison.get("backlog_delta", 0)),
+                    ),
+                    _kpi_card(
+                        t(lang, "kpi.approval_delta_vs_snapshot"),
+                        _fmt_signed_int(comparison.get("approval_delta", 0)),
+                        comparison_label,
+                        _tone_for_delta(comparison.get("approval_delta", 0)),
+                    ),
+                ]
+            ),
+        ]
+    )
+
+
+def _management_table_card(
+    records: list[dict[str, Any]],
+    *,
+    columns: list[tuple[str, str]],
+    title: str,
+    empty_message: str,
+) -> dbc.Card:
+    if not records:
+        return dbc.Card(
+            dbc.CardBody(
+                [
+                    html.Div(title, className="qa-section-title mb-2"),
+                    html.Div(empty_message, className="text-muted"),
+                ]
+            ),
+            className="qa-panel qa-table-card h-100",
+        )
+
+    frame = pd.DataFrame(records)
+    display = pd.DataFrame()
+    for label, source in columns:
+        if source in frame.columns:
+            display[label] = frame[source]
+        else:
+            display[label] = ""
+
+    return dbc.Card(
+        dbc.CardBody(
+            [
+                html.Div(title, className="qa-section-title mb-2"),
+                dash_table.DataTable(
+                    data=display.to_dict("records"),
+                    columns=[{"name": column, "id": column} for column in display.columns],
+                    page_action="none",
+                    style_table={"overflowX": "auto"},
+                    style_cell={
+                        "fontSize": "12px",
+                        "padding": "8px 10px",
+                        "fontFamily": "IBM Plex Sans, sans-serif",
+                        "border": "none",
+                        "whiteSpace": "normal",
+                        "height": "auto",
+                        "textAlign": "left",
+                    },
+                    style_header={
+                        "backgroundColor": "#eef3f8",
+                        "color": "#10222f",
+                        "fontWeight": "700",
+                        "borderBottom": "1px solid #9db4c7",
+                        "textTransform": "uppercase",
+                        "fontSize": "11px",
+                        "letterSpacing": "0.03em",
+                    },
+                    style_data={
+                        "backgroundColor": "#ffffff",
+                        "color": "#10222f",
+                        "borderBottom": "1px solid #d8e2eb",
+                    },
+                    style_data_conditional=[
+                        {"if": {"row_index": "odd"}, "backgroundColor": "#f8fbfd"},
+                    ],
+                ),
+            ]
+        ),
+        className="qa-panel qa-table-card h-100",
+    )
+
+
+def executive_report_pack(payload: Dict[str, Any], lang: str = "en") -> html.Div:
+    meta = payload.get("report_meta", {})
+    highlights = payload.get("weekly_highlights", [])
+    executive_summary = pd.DataFrame(payload.get("executive_summary_table", []))
+    backlog_risks = payload.get("top_backlog_risks", [])
+    stagnant_groups = payload.get("top_stagnant_groups", [])
+    snapshot_status = meta.get("snapshot_status", {})
+    highlight_label_map = {
+        "released_this_week": t(lang, "kpi.released_this_week"),
+        "released_weight_t_this_week": t(lang, "kpi.released_weight_this_week"),
+        "open_backlog": t(lang, "kpi.open_backlog"),
+        "approved_dossiers": t(lang, "kpi.approved"),
+    }
+
+    highlight_cards = []
+    for item in highlights:
+        label = item.get("label", "")
+        value = item.get("value", 0)
+        delta = item.get("delta", 0)
+        if "weight" in label:
+            display_value = _fmt_tons(value)
+            display_delta = _fmt_signed_tons(delta)
+        else:
+            display_value = _fmt_int(value)
+            display_delta = _fmt_signed_int(delta)
+        highlight_cards.append(
+            _kpi_card(
+                highlight_label_map.get(label, label.replace("_", " ").title()),
+                display_value,
+                display_delta,
+                _tone_for_backlog_delta(delta) if label == "open_backlog" else _tone_for_delta(delta),
+                lg=3,
+                xl=3,
+            )
+        )
+
+    header = dbc.Card(
+        dbc.CardBody(
+            [
+                html.Div(t(lang, "report.title"), className="qa-export-banner-kicker"),
+                html.H3(t(lang, "report.subtitle"), className="qa-page-title mb-2", style={"fontSize": "1.35rem", "color": "#10222f", "textTransform": "none"}),
+                dbc.Row(
+                    [
+                        dbc.Col(html.Div(f"{t(lang, 'report.language')}: {str(meta.get('language', lang)).upper()}", className="qa-subtitle"), md=3),
+                        dbc.Col(html.Div(f"{t(lang, 'report.analysis_week')}: {_fmt_week(meta.get('analysis_week'))}", className="qa-subtitle"), md=3),
+                        dbc.Col(html.Div(f"{t(lang, 'report.comparison_week')}: {_fmt_week(meta.get('comparison_week'))}", className="qa-subtitle"), md=3),
+                        dbc.Col(
+                            html.Div(
+                                f"{t(lang, 'report.snapshot_coverage')}: {t(lang, 'report.snapshot_coverage_value', count=snapshot_status.get('snapshot_count', 0))}",
+                                className="qa-subtitle",
+                            ),
+                            md=3,
+                        ),
+                    ],
+                    className="gy-2",
+                ),
+            ]
+        ),
+        className="qa-panel qa-table-card mb-3 qa-report-header",
+    )
+
+    backlog_table = _management_table_card(
+        backlog_risks,
+        columns=[
+            (t(lang, "table.stage_type"), "stage_category"),
+            (t(lang, "table.building_family"), "building_family"),
+            (t(lang, "table.open_backlog"), "open_backlog"),
+            (t(lang, "table.oldest_ref_week"), "oldest_reference_week"),
+            (t(lang, "table.max_age_w"), "max_age_weeks"),
+        ],
+        title=t(lang, "report.top_backlog_risks"),
+        empty_message=t(lang, "empty.no_backlog_groups"),
+    )
+    stagnant_table = _management_table_card(
+        stagnant_groups,
+        columns=[
+            (t(lang, "table.stage_type"), "stage_category"),
+            (t(lang, "table.building_family"), "building_family"),
+            (t(lang, "table.open_backlog"), "open_backlog"),
+            (t(lang, "table.released_this_week"), "released_this_week"),
+            (t(lang, "table.cum_approved_growth"), "cumulative_approved_growth"),
+        ],
+        title=t(lang, "report.top_stagnant_groups"),
+        empty_message=t(lang, "empty.no_stagnant_groups"),
+    )
+
+    return html.Div(
+        [
+            header,
+            html.Div(executive_cards(payload.get("executive_kpis", {}), lang=lang), className="mb-3"),
+            html.Div(
+                [
+                    html.H6(t(lang, "report.weekly_highlights"), className="qa-section-title mt-1 mb-2"),
+                    dbc.Row(highlight_cards),
+                ],
+                className="mb-3",
+            ),
+            dbc.Row(
+                [
+                    dbc.Col(backlog_table, xs=12, lg=6, className="mb-3"),
+                    dbc.Col(stagnant_table, xs=12, lg=6, className="mb-3"),
+                ]
+            ),
+            html.Div(executive_summary_table(executive_summary, lang=lang)),
+        ]
     )
 
 
