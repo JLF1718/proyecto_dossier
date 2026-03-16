@@ -53,6 +53,58 @@ def overview_page() -> dbc.Container:
             ),
             html.H5("Executive Overview", className="qa-section-title mt-1 mb-2"),
             html.Div(id="executive-kpis", className="mb-4 qa-kpi-zone"),
+            html.H5("Weekly Management", className="qa-section-title mt-1 mb-2"),
+            html.Div(id="weekly-management-kpis", className="mb-3 qa-kpi-zone"),
+            dbc.Row(
+                [
+                    dbc.Col(
+                        dbc.Card(
+                            dbc.CardBody(dcc.Graph(id="weekly-release-count-graph", config={"displaylogo": False}, style={"height": "340px"})),
+                            className="qa-panel h-100",
+                        ),
+                        xs=12,
+                        lg=6,
+                        className="mb-3",
+                    ),
+                    dbc.Col(
+                        dbc.Card(
+                            dbc.CardBody(dcc.Graph(id="weekly-release-weight-graph", config={"displaylogo": False}, style={"height": "340px"})),
+                            className="qa-panel h-100",
+                        ),
+                        xs=12,
+                        lg=6,
+                        className="mb-3",
+                    ),
+                ]
+            ),
+            dbc.Row(
+                [
+                    dbc.Col(
+                        dbc.Card(
+                            dbc.CardBody(dcc.Graph(id="cumulative-approved-growth-graph", config={"displaylogo": False}, style={"height": "340px"})),
+                            className="qa-panel h-100",
+                        ),
+                        xs=12,
+                        lg=6,
+                        className="mb-3",
+                    ),
+                    dbc.Col(
+                        dbc.Card(
+                            dbc.CardBody(dcc.Graph(id="cumulative-release-weight-graph", config={"displaylogo": False}, style={"height": "340px"})),
+                            className="qa-panel h-100",
+                        ),
+                        xs=12,
+                        lg=6,
+                        className="mb-3",
+                    ),
+                ]
+            ),
+            dbc.Row(
+                [
+                    dbc.Col(html.Div(id="backlog-aging-summary", className="mb-3"), xs=12, lg=6),
+                    dbc.Col(html.Div(id="stagnant-groups-summary", className="mb-3"), xs=12, lg=6),
+                ]
+            ),
             html.H5("Dossier Analysis", className="qa-section-title mt-1 mb-2"),
             dbc.Row(
                 [
