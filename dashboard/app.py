@@ -20,13 +20,27 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from dashboard.components.cards import executive_cards, executive_summary_table, quality_cards
+from backend.services.dossier_service import build_weekly_management_payload
+from backend.services.dossier_service import compute_kpis
+
+from dashboard.components.cards import (
+    backlog_aging_summary,
+    executive_cards,
+    executive_summary_table,
+    quality_cards,
+    stagnant_groups_summary,
+    weekly_management_cards,
+)
 from dashboard.components.figures import (
+    cumulative_approved_growth_figure,
+    cumulative_released_weight_growth_figure,
     derive_building_family,
     derive_stage_category,
     executive_summary_frame,
     status_by_block_figure,
     status_by_stage_figure,
+    weekly_released_dossiers_figure,
+    weekly_released_weight_figure,
     weekly_accumulated_progress_figure,
     weekly_progress_figure,
 )
@@ -55,18 +69,6 @@ _STAGE_FILTER_ORDER = [
 ]
 
 
-def _classify_status(series: pd.Series) -> pd.Series:
-    def _map(v: str) -> str:
-        text = str(v).strip().lower().replace("_", " ")
-        if text in _APPROVED:
-            return "approved"
-        if text in _IN_REVIEW:
-            return "in_review"
-        return "pending"
-
-    return series.fillna("pending").astype(str).apply(_map)
-
-
 def _load_local_dossier_csv() -> pd.DataFrame:
     """Load processed BAYSA CSV keeping all rows for KPI split calculations."""
     try:
@@ -85,34 +87,7 @@ def _in_scope(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _compute_kpis(all_rows_df: pd.DataFrame) -> Dict[str, Any]:
-    in_scope = _in_scope(all_rows_df)
-    status = _classify_status(in_scope.get("estatus", pd.Series(index=in_scope.index, dtype=object)))
-    total = int(len(in_scope))
-    approved = int((status == "approved").sum())
-    pending = int((status == "pending").sum())
-    in_review = int((status == "in_review").sum())
-    out_of_scope = int(max(len(all_rows_df) - total, 0))
-
-    weights = pd.to_numeric(in_scope.get("peso_dossier_kg", 0), errors="coerce").fillna(0.0)
-    released_weights = weights[status == "approved"]
-    peso_total_ton = float(weights.sum() / 1000.0)
-    peso_liberado_ton = float(released_weights.sum() / 1000.0)
-
-    pct_liberado = (approved / total * 100.0) if total else 0.0
-    pct_peso_liberado = (peso_liberado_ton / peso_total_ton * 100.0) if peso_total_ton else 0.0
-
-    return {
-        "total_dossiers": total,
-        "approved_dossiers": approved,
-        "pending_dossiers": pending,
-        "in_review_dossiers": in_review,
-        "rejected_dossiers": 0,
-        "rows_out_of_scope": out_of_scope,
-        "pct_liberado": round(pct_liberado, 1),
-        "peso_total_ton": round(peso_total_ton, 2),
-        "peso_liberado_ton": round(peso_liberado_ton, 2),
-        "pct_peso_liberado": round(pct_peso_liberado, 1),
-    }
+    return compute_kpis(all_rows_df)
 
 
 def _apply_local_csv_filters(
@@ -167,7 +142,14 @@ app.layout = create_layout()
     Output("filter-system", "options"),
     Output("filter-week", "options"),
     Output("executive-kpis", "children"),
+    Output("weekly-management-kpis", "children"),
     Output("quality-kpis", "children"),
+    Output("weekly-release-count-graph", "figure"),
+    Output("weekly-release-weight-graph", "figure"),
+    Output("cumulative-approved-growth-graph", "figure"),
+    Output("cumulative-release-weight-graph", "figure"),
+    Output("backlog-aging-summary", "children"),
+    Output("stagnant-groups-summary", "children"),
     Output("stage-status-graph", "figure"),
     Output("block-status-graph", "figure"),
     Output("weekly-progress-graph", "figure"),
@@ -208,6 +190,15 @@ def update_dashboard(
         include_out_of_scope=True,
     )
     summary_table = executive_summary_table(executive_summary_frame(summary_filtered))
+    management_filtered = _apply_local_csv_filters(
+        local_df,
+        contractor=contractor,
+        discipline=discipline,
+        system=system,
+        week=None,
+        include_out_of_scope=True,
+    )
+    weekly_payload = build_weekly_management_payload(management_filtered, selected_week=week)
 
     contractor_options: list[dict[str, str]] = []
     if "contractor" in in_scope_df.columns:
@@ -239,7 +230,14 @@ def update_dashboard(
         system_options,
         week_options,
         executive_cards(kpi_payload),
+        weekly_management_cards(weekly_payload),
         quality_cards(kpi_payload),
+        weekly_released_dossiers_figure(weekly_payload),
+        weekly_released_weight_figure(weekly_payload),
+        cumulative_approved_growth_figure(weekly_payload),
+        cumulative_released_weight_growth_figure(weekly_payload),
+        backlog_aging_summary(weekly_payload),
+        stagnant_groups_summary(weekly_payload),
         status_by_stage_figure(local_filtered),
         status_by_block_figure(local_filtered),
         weekly_progress_figure(local_filtered),
