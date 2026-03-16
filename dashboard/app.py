@@ -20,10 +20,11 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from dashboard.components.cards import executive_cards, quality_cards
+from dashboard.components.cards import executive_cards, executive_summary_table, quality_cards
 from dashboard.components.figures import (
     derive_building_family,
     derive_stage_category,
+    executive_summary_frame,
     status_by_block_figure,
     status_by_stage_figure,
     weekly_accumulated_progress_figure,
@@ -120,11 +121,16 @@ def _apply_local_csv_filters(
     discipline: Optional[str],
     system: Optional[str],
     week: Optional[str],
+    *,
+    include_out_of_scope: bool = False,
 ) -> pd.DataFrame:
-    """Apply dashboard filters to in-scope processed CSV rows."""
+    """Apply dashboard filters to processed CSV rows."""
     if df.empty:
         return df
-    out = _in_scope(df).copy()
+    out = df.copy()
+
+    if not include_out_of_scope:
+        out = _in_scope(out)
 
     if contractor and "contractor" in out.columns:
         out = out[out["contractor"].astype(str).str.upper() == contractor.strip().upper()]
@@ -166,6 +172,7 @@ app.layout = create_layout()
     Output("block-status-graph", "figure"),
     Output("weekly-progress-graph", "figure"),
     Output("weekly-accum-graph", "figure"),
+    Output("executive-summary-table", "children"),
     Input("filter-contractor", "value"),
     Input("filter-discipline", "value"),
     Input("filter-system", "value"),
@@ -192,6 +199,15 @@ def update_dashboard(
         system=system,
         week=week,
     )
+    summary_filtered = _apply_local_csv_filters(
+        local_df,
+        contractor=contractor,
+        discipline=discipline,
+        system=system,
+        week=week,
+        include_out_of_scope=True,
+    )
+    summary_table = executive_summary_table(executive_summary_frame(summary_filtered))
 
     contractor_options: list[dict[str, str]] = []
     if "contractor" in in_scope_df.columns:
@@ -228,6 +244,7 @@ def update_dashboard(
         status_by_block_figure(local_filtered),
         weekly_progress_figure(local_filtered),
         weekly_accumulated_progress_figure(local_filtered),
+        summary_table,
     )
 
 
@@ -268,15 +285,46 @@ app.index_string = """
             .qa-hero {
                 border-top: 5px solid #66d0e2;
                 border-left: 3px solid rgba(255,255,255,.35);
-                background: linear-gradient(120deg, rgba(6,26,48,.98), rgba(20,69,110,.96));
+                background:
+                    linear-gradient(140deg, rgba(4,20,39,.98), rgba(12,53,90,.97) 60%, rgba(18,75,116,.95)),
+                    radial-gradient(circle at 88% 16%, rgba(102,208,226,.22), transparent 42%);
                 color: #f8fbff;
-                box-shadow: 0 14px 30px rgba(9,26,45,.24);
+                box-shadow: 0 16px 32px rgba(9,26,45,.3);
+                position: relative;
+                overflow: hidden;
+            }
+            .qa-hero::after {
+                content: "";
+                position: absolute;
+                inset: 0;
+                background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(0,0,0,.1));
+                pointer-events: none;
+            }
+            .qa-hero .card-body {
+                position: relative;
+                z-index: 1;
+            }
+            .qa-hero-kicker {
+                color: #a9d9e4;
+                font-size: .72rem;
+                text-transform: uppercase;
+                letter-spacing: .14em;
+                font-weight: 600;
             }
             .qa-page-title {
-                font-size: clamp(1.55rem, 3vw, 2.35rem);
-                font-weight: 700;
-                letter-spacing: .03em;
+                color: #ffffff;
+                font-size: clamp(1.7rem, 3.1vw, 2.55rem);
+                font-weight: 800;
+                letter-spacing: .02em;
                 text-transform: uppercase;
+                line-height: 1.05;
+                text-shadow: 0 2px 12px rgba(4,16,30,.42);
+            }
+            .qa-hero-subtitle {
+                color: rgba(236,247,252,.95);
+                font-size: .88rem;
+                letter-spacing: .035em;
+                font-weight: 500;
             }
             .qa-filter-row {
                 padding: .55rem .35rem .2rem;
@@ -325,6 +373,12 @@ app.index_string = """
         .qa-shell {
           padding: 12px;
         }
+                .qa-hero-kicker {
+                    letter-spacing: .11em;
+                }
+                .qa-hero-subtitle {
+                    font-size: .82rem;
+                }
         .qa-kpi-value {
                     font-size: 1.65rem;
         }

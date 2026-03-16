@@ -33,7 +33,9 @@ def overview_page() -> dbc.Container:
                     dbc.Card(
                         dbc.CardBody(
                             [
-                                html.H2("Executive QA Dossier Control Board", className="qa-page-title mb-0"),
+                                html.Div("INPROS QA PLATFORM", className="qa-hero-kicker mb-1"),
+                                html.H2("Executive QA Dossier Control Board", className="qa-page-title mb-1"),
+                                html.Div("BAYSA Dossier Monitoring", className="qa-hero-subtitle"),
                             ]
                         ),
                         className="qa-panel qa-hero mb-3",
@@ -96,6 +98,8 @@ def overview_page() -> dbc.Container:
                     ),
                 ]
             ),
+            html.H5("Executive Summary by Business Group", className="qa-section-title mt-2 mb-2"),
+            html.Div(id="executive-summary-table", className="mb-4"),
             html.H5("Secondary Quality Signals", className="qa-section-title qa-section-title-muted mt-2 mb-1"),
             html.Div(id="quality-kpis", className="mb-1 qa-secondary-kpis"),
         ],
