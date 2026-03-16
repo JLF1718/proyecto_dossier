@@ -96,7 +96,7 @@ def _kpi_card(
                     html.Div(subtitle, className="qa-subtitle"),
                 ]
             ),
-            className="qa-panel h-100",
+            className="qa-panel qa-kpi-card h-100",
         ),
         **col_kwargs,
     )
@@ -230,7 +230,7 @@ def backlog_aging_summary(payload: Dict[str, Any], lang: str = "en") -> html.Div
     if not groups:
         table = dbc.Card(
             dbc.CardBody(html.Div(t(lang, "empty.no_backlog_groups"), className="text-muted")),
-            className="qa-panel",
+            className="qa-panel qa-table-card",
         )
         return html.Div([header_cards, table])
 
@@ -291,7 +291,7 @@ def backlog_aging_summary(payload: Dict[str, Any], lang: str = "en") -> html.Div
                 ],
             )
         ),
-        className="qa-panel",
+        className="qa-panel qa-table-card",
     )
     return html.Div([header_cards, table])
 
@@ -311,7 +311,7 @@ def stagnant_groups_summary(payload: Dict[str, Any], lang: str = "en") -> html.D
     if not groups:
         table = dbc.Card(
             dbc.CardBody(html.Div(t(lang, "empty.no_stagnant_groups"), className="text-muted")),
-            className="qa-panel",
+            className="qa-panel qa-table-card",
         )
         return html.Div([header_cards, table])
 
@@ -372,7 +372,7 @@ def stagnant_groups_summary(payload: Dict[str, Any], lang: str = "en") -> html.D
                 ],
             )
         ),
-        className="qa-panel",
+        className="qa-panel qa-table-card",
     )
     return html.Div([header_cards, table])
 
@@ -381,7 +381,7 @@ def executive_summary_table(summary_df: Any, lang: str = "en") -> dbc.Card:
     if summary_df is None or getattr(summary_df, "empty", True):
         return dbc.Card(
             dbc.CardBody(html.Div(t(lang, "empty.no_data_selected_filters"), className="text-muted")),
-            className="qa-panel",
+            className="qa-panel qa-table-card",
         )
 
     display = summary_df.copy()
@@ -456,5 +456,5 @@ def executive_summary_table(summary_df: Any, lang: str = "en") -> dbc.Card:
                 ],
             )
         ),
-        className="qa-panel",
+        className="qa-panel qa-table-card",
     )
