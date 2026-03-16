@@ -12,6 +12,7 @@ Uso:
     python cli.py generate S186    # Generar dashboards para semana S186
     python cli.py validate         # Validar integridad del proyecto
     python cli.py status           # Ver estado rápido
+    python cli.py smoke-validate   # Ejecutar smoke test de release
     python cli.py --help           # Ver todas las opciones
 """
 
@@ -212,10 +213,11 @@ def cmd_status(args):
     
     checks = {
         "App": APP_DIR / "streamlit_app.py",
+        "Dashboard": PROJECT_ROOT / "dashboard" / "app.py",
+        "Backend": PROJECT_ROOT / "backend" / "main.py",
         "Core (Métricas)": PROJECT_ROOT / "core" / "metricas.py",
         "Generators": PROJECT_ROOT / "generators" / "dashboard_generator.py",
-        "Data/BAYSA": PROJECT_ROOT / "data" / "contratistas" / "BAYSA" / "ctrl_dosieres_BAYSA_normalizado.csv",
-        "Data/JAMAR": PROJECT_ROOT / "data" / "contratistas" / "JAMAR" / "ctrl_dosieres_JAMAR_normalizado.csv",
+        "Data/BAYSA (processed)": PROJECT_ROOT / "data" / "processed" / "baysa_dossiers_clean.csv",
         "Output": PROJECT_ROOT / "output",
         "Config": PROJECT_ROOT / "config.yaml",
     }
@@ -230,18 +232,13 @@ def cmd_status(args):
     
     # Contar CSV
     print_info("\nDatos:")
-    baysa_csv = PROJECT_ROOT / "data" / "contratistas" / "BAYSA" / "ctrl_dosieres_BAYSA_normalizado.csv"
-    jamar_csv = PROJECT_ROOT / "data" / "contratistas" / "JAMAR" / "ctrl_dosieres_JAMAR_normalizado.csv"
+    baysa_csv = PROJECT_ROOT / "data" / "processed" / "baysa_dossiers_clean.csv"
     
     try:
         import pandas as pd
         if baysa_csv.exists():
-            df_baysa = pd.read_csv(baysa_csv, encoding='latin-1')
+            df_baysa = pd.read_csv(baysa_csv)
             print(f"  • BAYSA: {len(df_baysa)} registros")
-        
-        if jamar_csv.exists():
-            df_jamar = pd.read_csv(jamar_csv, encoding='utf-8-sig')
-            print(f"  • JAMAR: {len(df_jamar)} registros")
     except Exception as e:
         print_warning(f"  No se pudieron contar registros: {e}")
     
@@ -323,6 +320,17 @@ def cmd_inspect_management(args):
     subprocess.run(cmd, cwd=str(PROJECT_ROOT), check=True)
 
 
+def cmd_smoke_validate(args):
+    """Ejecuta smoke test compacto de release (payloads + salud opcional)."""
+    print_header("[SMOKE] VALIDACION COMPACTA DE RELEASE")
+    cmd = [sys.executable, "-m", "scripts.smoke_validate_release"]
+    if args.api_base:
+        cmd.extend(["--api-base", args.api_base])
+    if args.dash_url:
+        cmd.extend(["--dash-url", args.dash_url])
+    subprocess.run(cmd, cwd=str(PROJECT_ROOT), check=True)
+
+
 def main():
     """Función principal."""
     parser = argparse.ArgumentParser(
@@ -335,6 +343,7 @@ Ejemplos:
   python cli.py generate S186        # Generar dashboards para S186
   python cli.py validate             # Validar proyecto
   python cli.py status               # Ver estado rápido
+        python cli.py smoke-validate      # Smoke de release
     python cli.py backup               # Crear respaldo
     python cli.py prune                # Podar caches, historicos y backups antiguos
     python cli.py snapshot-build       # Persistir snapshot semanal
@@ -391,6 +400,12 @@ Ejemplos:
     parser_inspect.add_argument("--comparison-week", type=int, default=None, help="Semana historica a comparar")
     parser_inspect.add_argument("--lang", default="en", choices=["en", "es"], help="Idioma para payload ejecutivo")
     parser_inspect.set_defaults(func=cmd_inspect_management)
+
+    # Comando: smoke-validate
+    parser_smoke = subparsers.add_parser("smoke-validate", help="Ejecuta smoke test compacto de release")
+    parser_smoke.add_argument("--api-base", default=None, help="Base URL backend (ej: http://127.0.0.1:8000)")
+    parser_smoke.add_argument("--dash-url", default=None, help="URL dashboard (ej: http://127.0.0.1:8050)")
+    parser_smoke.set_defaults(func=cmd_smoke_validate)
     
     args = parser.parse_args()
     

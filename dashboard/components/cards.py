@@ -343,6 +343,114 @@ def _management_table_card(
     )
 
 
+def risk_exception_cards(payload: Dict[str, Any], lang: str = "en") -> html.Div:
+    risk = payload.get("risk_exception_summary", {})
+    signals = {item.get("key"): item.get("value") for item in risk.get("signals", [])}
+
+    cards = dbc.Row(
+        [
+            _kpi_card(
+                t(lang, "kpi.max_age"),
+                _fmt_int(signals.get("oldest_backlog_age", 0)),
+                t(lang, "kpi.weeks_since_planned"),
+                "danger",
+                lg=3,
+            ),
+            _kpi_card(
+                t(lang, "kpi.stagnant_groups"),
+                _fmt_int(signals.get("stagnant_groups", 0)),
+                t(lang, "kpi.no_movement_groups"),
+                "danger",
+                lg=3,
+            ),
+            _kpi_card(
+                t(lang, "kpi.open_backlog"),
+                _fmt_int(signals.get("largest_open_backlog", 0)),
+                t(lang, "kpi.risk_attention_now"),
+                "warning",
+                lg=3,
+            ),
+            _kpi_card(
+                t(lang, "kpi.largest_approval_gap"),
+                _fmt_int(signals.get("largest_approval_gap", 0)),
+                t(lang, "kpi.top_risk_signals"),
+                "info",
+                lg=3,
+            ),
+        ]
+    )
+
+    oldest_table = _management_table_card(
+        risk.get("oldest_backlog_groups", [])[:5],
+        columns=[
+            (t(lang, "table.stage_type"), "stage_category"),
+            (t(lang, "table.building_family"), "building_family"),
+            (t(lang, "table.open_backlog"), "open_backlog"),
+            (t(lang, "table.oldest_ref_week"), "oldest_reference_week"),
+            (t(lang, "table.max_age_w"), "max_age_weeks"),
+        ],
+        title=t(lang, "report.top_backlog_risks"),
+        empty_message=t(lang, "empty.no_backlog_groups"),
+    )
+
+    gap_table = _management_table_card(
+        risk.get("largest_approval_gaps", [])[:5],
+        columns=[
+            (t(lang, "table.stage_type"), "stage_category"),
+            (t(lang, "table.building_family"), "building_family"),
+            (t(lang, "table.total_dossiers"), "total_dossiers"),
+            (t(lang, "table.approved"), "approved"),
+            (t(lang, "table.approval_gap"), "approval_gap"),
+        ],
+        title=t(lang, "kpi.largest_approval_gap"),
+        empty_message=t(lang, "empty.no_data_selected_filters"),
+    )
+
+    return html.Div(
+        [
+            cards,
+            dbc.Row(
+                [
+                    dbc.Col(oldest_table, xs=12, lg=6, className="mb-3"),
+                    dbc.Col(gap_table, xs=12, lg=6, className="mb-3"),
+                ]
+            ),
+        ]
+    )
+
+
+def high_value_insights_cards(payload: Dict[str, Any], lang: str = "en") -> html.Div:
+    insights = payload.get("high_value_insights", [])
+    if not insights:
+        return html.Div(className="d-none")
+
+    cards = []
+    for insight in insights:
+        key = str(insight.get("key", "")).strip().lower()
+        label = t(lang, f"report.insight.{key}")
+        subtitle = ""
+        if insight.get("stage_category") and insight.get("building_family"):
+            subtitle = f"{insight.get('stage_category')} · {insight.get('building_family')}"
+        elif insight.get("building_family"):
+            subtitle = str(insight.get("building_family"))
+        cards.append(
+            _kpi_card(
+                label,
+                _fmt_tons(insight.get("value")) if "weight" in key else _fmt_int(insight.get("value")),
+                subtitle,
+                "primary",
+                lg=4,
+            )
+        )
+
+    return html.Div(
+        [
+            html.H6(t(lang, "report.high_value_insights"), className="qa-section-title mt-1 mb-2"),
+            dbc.Row(cards),
+        ]
+    )
+
+
 def executive_report_pack(payload: Dict[str, Any], lang: str = "en") -> html.Div:
     meta = payload.get("report_meta", {})
     highlights = payload.get("weekly_highlights", [])
@@ -350,6 +458,7 @@ def executive_report_pack(payload: Dict[str, Any], lang: str = "en") -> html.Div
     backlog_risks = payload.get("top_backlog_risks", [])
     stagnant_groups = payload.get("top_stagnant_groups", [])
     snapshot_status = meta.get("snapshot_status", {})
+    risk_summary = payload.get("risk_exception_summary", {})
     highlight_label_map = {
         "released_this_week": t(lang, "kpi.released_this_week"),
         "released_weight_t_this_week": t(lang, "kpi.released_weight_this_week"),
@@ -440,12 +549,20 @@ def executive_report_pack(payload: Dict[str, Any], lang: str = "en") -> html.Div
                 ],
                 className="mb-3",
             ),
+            html.Div(
+                [
+                    html.H6(t(lang, "report.risk_exception_focus"), className="qa-section-title mt-1 mb-2"),
+                    risk_exception_cards({"risk_exception_summary": risk_summary}, lang=lang),
+                ],
+                className="mb-1",
+            ),
             dbc.Row(
                 [
                     dbc.Col(backlog_table, xs=12, lg=6, className="mb-3"),
                     dbc.Col(stagnant_table, xs=12, lg=6, className="mb-3"),
                 ]
             ),
+            high_value_insights_cards(payload, lang=lang),
             html.Div(executive_summary_table(executive_summary, lang=lang)),
         ]
     )

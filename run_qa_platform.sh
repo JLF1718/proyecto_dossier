@@ -5,7 +5,9 @@ set -euo pipefail
 IFS=$'\n\t'
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VENV_PATH="${HOME}/workspace/qa_env"
+DEFAULT_VENV_PATH="${HOME}/workspace/qa_env"
+PROJECT_VENV_PATH="${PROJECT_DIR}/.venv"
+VENV_PATH="${QA_PLATFORM_VENV:-}"
 RUNTIME_DIR="${PROJECT_DIR}/.runtime"
 
 BACKEND_PORT=8000
@@ -95,12 +97,23 @@ wait_for_http_health() {
 cd "${PROJECT_DIR}"
 mkdir -p "${RUNTIME_DIR}"
 
+if [[ -z "${VENV_PATH}" ]]; then
+    if [[ -f "${PROJECT_VENV_PATH}/bin/activate" ]]; then
+        VENV_PATH="${PROJECT_VENV_PATH}"
+    else
+        VENV_PATH="${DEFAULT_VENV_PATH}"
+    fi
+fi
+
 if [[ ! -f "${VENV_PATH}/bin/activate" ]]; then
-    echo "[ERROR] Virtual environment not found at ${VENV_PATH}"
+    echo "[ERROR] Virtual environment not found."
+    echo "[ERROR] Checked: ${PROJECT_VENV_PATH} and ${DEFAULT_VENV_PATH}"
+    echo "[ERROR] Optional override: export QA_PLATFORM_VENV=/path/to/venv"
     exit 1
 fi
 
 source "${VENV_PATH}/bin/activate"
+echo "[INFO] Using virtual environment: ${VENV_PATH}"
 
 if [[ -n "${VIRTUAL_ENV:-}" ]] && [[ -x "${VIRTUAL_ENV}/bin/python" ]]; then
     DASH_PYTHON_BIN="${VIRTUAL_ENV}/bin/python"

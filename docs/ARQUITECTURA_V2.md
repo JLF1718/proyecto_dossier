@@ -1,241 +1,151 @@
-# QA Platform — Architecture v2.0
-> Construction Quality Management System
+# QA Platform v0.7 - Arquitectura de Cierre
 
-## Overview
+## 1. Alcance activo
 
-The repository is organised into a layered, modular architecture.  
-The original analytics logic (`core/`, `generators/`) is **preserved**; it is wrapped by the new layers—not replaced.
+Esta version cierra el flujo ejecutivo de dossiers sobre una sola fuente activa:
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        Browser / Client                      │
-└──────────────────────┬──────────────────────────────────────┘
-                       │ HTTP
-          ┌────────────▼────────────┐
-          │    Nginx Reverse Proxy   │  :80 / :443
-          │    (production only)     │
-          └────┬───────────────┬────┘
-               │               │
-     ┌─────────▼─────┐  ┌──────▼───────┐
-     │  Dash App      │  │  FastAPI API  │
-     │  :8050         │  │  :8000        │
-     │  dashboard/    │  │  backend/     │
-     └────────┬───────┘  └──────┬───────┘
-              │   HTTP /api/*    │
-              └──────────────────┘
-                       │
-          ┌────────────▼────────────┐
-          │        modules/          │  QA discipline modules
-          │  dossier_control/        │
-          │  welding_control/        │
-          │  concrete_control/       │
-          │  nc_management/          │
-          └────────────┬────────────┘
-                       │
-          ┌────────────▼────────────┐
-          │        analytics/        │  pandas processing layer
-          │  data_processing.py      │
-          │  metrics.py              │  ← wraps core/metricas.py
-          │  reports.py              │  ← wraps generators/
-          └────────────┬────────────┘
-                       │
-    ┌──────────────────▼──────────────────┐
-    │          EXISTING MODULES            │  (preserved, not modified)
-    │  core/metricas.py   ◄── source of   │
-    │  generators/dashboard_generator.py   │     truth for KPIs
-    │  generators/consolidado_generator.py │
-    │  generators/utils_generator.py       │
-    └──────────────────┬──────────────────┘
-                       │
-          ┌────────────▼────────────┐
-          │        database/         │
-          │  models.py   (SQLAlchemy)│
-          │  session.py              │
-          │  qa_platform.db (SQLite) │
-          └─────────────────────────┘
+- `data/processed/baysa_dossiers_clean.csv`
+
+Reglas preservadas sin cambios:
+
+- KPI business rules validadas
+- Semantica weekly management validada
+- Semantica historical snapshot validada
+- Politica contractual de pesos validada
+- Codigos de negocio PRO / SUE / SHARED
+- Soporte EN/ES
+- Modo exportacion ejecutiva
+- Branding INPROS
+
+## 2. Topologia operativa
+
+```text
+Browser
+  -> Dash dashboard (dashboard/app.py) on :8050
+  -> FastAPI backend (backend/main.py) on :8000
+      -> dossier_service (backend/services/dossier_service.py)
+          -> data/processed/baysa_dossiers_clean.csv
+          -> SQLite snapshots (database/qa_platform.db)
 ```
 
----
+## 3. Capas y responsabilidades
 
-## Directory Structure
+- `backend/main.py`
+  - App FastAPI, health check, middlewares, routers, startup DB init.
+- `backend/routers/dossiers.py`
+  - Endpoints de dossieres y payloads de gestion.
+- `backend/services/dossier_service.py`
+  - Fuente de verdad de normalizacion, KPI, weekly, historical y executive payload.
+- `dashboard/pages/overview.py`
+  - Orden visual final de secciones ejecutivas.
+- `dashboard/components/cards.py`
+  - KPIs, capa de riesgo/excepcion, tablas ejecutivas, pack de reporte.
+- `dashboard/i18n.py`
+  - Etiquetas EN/ES para UI, export y reporte.
 
-```
-proyecto_dossier/
-│
-├── backend/                    ← FastAPI application
-│   ├── main.py                 ← App entry point
-│   ├── config.py               ← Settings (pydantic-settings)
-│   ├── dependencies.py         ← Auth-ready dependency injection
-│   └── routers/
-│       ├── dossiers.py         ← GET /api/dossiers
-│       ├── metrics.py          ← GET /api/metrics
-│       ├── welds.py            ← GET /api/welds
-│       └── ncforms.py          ← GET/POST /api/ncforms
-│
-├── dashboard/                  ← Plotly Dash application
-│   ├── app.py                  ← Dash entry point + page routing
-│   ├── layouts/
-│   │   ├── main_layout.py      ← Shell: sidebar + navbar
-│   │   └── dossier_layout.py   ← Dossier Control page
-│   ├── callbacks/
-│   │   └── dossier_callbacks.py← Interactive filter callbacks
-│   └── components/
-│       ├── kpi_cards.py        ← Bootstrap KPI card components
-│       └── charts.py           ← dcc.Graph wrappers
-│
-├── modules/                    ← One module per QA discipline
-│   ├── dossier_control/
-│   │   ├── data_loader.py      ← CSV loading for dossiers
-│   │   ├── metrics.py          ← Dossier KPI API
-│   │   └── dashboard.py        ← Plotly figure factories
-│   ├── welding_control/
-│   │   ├── data_loader.py
-│   │   ├── metrics.py
-│   │   └── dashboard.py
-│   ├── concrete_control/
-│   │   ├── data_loader.py
-│   │   ├── metrics.py
-│   │   └── dashboard.py
-│   └── nc_management/
-│       ├── data_loader.py
-│       ├── metrics.py
-│       └── dashboard.py
-│
-├── analytics/                  ← pandas processing + metrics adapter
-│   ├── data_processing.py      ← CSV normalisation, pivoting
-│   ├── metrics.py              ← Adapter over core/metricas.py
-│   └── reports.py              ← Wrapper over generators/
-│
-├── database/                   ← SQLAlchemy ORM
-│   ├── models.py               ← Dossier, WeldJoint, ConcreteTest, NCForm, AuditLog
-│   └── session.py              ← Engine + session factory + init_db()
-│
-├── core/                       ← PRESERVED — canonical metrics
-│   └── metricas.py
-│
-├── generators/                 ← PRESERVED — HTML dashboard generators
-│   ├── dashboard_generator.py
-│   ├── consolidado_generator.py
-│   └── utils_generator.py
-│
-├── data/                       ← PRESERVED — CSV data files
-├── scripts/                    ← PRESERVED — normalisation scripts
-├── output/                     ← Generated HTML dashboards
-│
-├── .env.example                ← Environment variable template
-├── run_dev.sh                  ← One-command dev launcher
-├── Makefile                    ← Development task runner
-├── nginx.conf                  ← Production reverse proxy config
-└── requirements.txt            ← All Python dependencies
-```
+## 4. Flujo final del dashboard (global -> particular)
 
----
+1. Executive Status
+2. Weekly Movement
+3. Risk / Exceptions
+4. Trend / History
+5. Actionable Detail
+6. Supporting Detail
 
-## API Endpoints
+Notas:
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/health` | Health check |
-| GET | `/api/dossiers` | List all dossiers (paginated, filterable) |
-| GET | `/api/dossiers/{contractor}` | Dossiers for the requested contractor key (active flow: BAYSA) |
-| GET | `/api/dossiers/contractors` | Active contractor keys |
-| GET | `/api/metrics` | Global KPIs |
-| GET | `/api/metrics/by-contractor` | KPIs per contractor |
-| GET | `/api/metrics/by-stage` | KPIs per construction stage |
-| GET | `/api/metrics/{contractor}` | KPIs for one contractor |
-| GET | `/api/welds` | Weld inspection records |
-| GET | `/api/welds/metrics` | Welding KPIs |
-| GET | `/api/ncforms` | NC reports list |
-| GET | `/api/ncforms/metrics` | NC KPIs |
-| POST | `/api/ncforms` | Create new NC report |
+- Modo export mantiene el mismo orden.
+- Secciones secundarias se de-enfatizan para bajar carga cognitiva.
+- Riesgo/Excepcion prioriza atencion inmediata (antiguedad, estancamiento, backlog y brecha de aprobacion).
 
-Interactive docs: **http://localhost:8000/api/docs**
+## 5. Payloads de gestion
 
----
+### Weekly management
 
-## Running Locally
+Endpoint:
 
-### 1. Prerequisites
+- `GET /api/dossiers/weekly-management`
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
+Campos clave:
 
-### 2. Configure
+- `delta_kpis`
+- `weekly_comparison`
+- `backlog_aging_summary`
+- `stagnant_groups_summary`
+- `risk_exception_summary` (v0.7)
 
-```bash
-cp .env.example .env
-# Edit .env — at minimum set API_ACCESS_KEY if you want auth
-```
+### Historical comparison
 
-### 3. Initialise the database
+Endpoint:
 
-```bash
-make db-init
-# or: python -c "from database.session import init_db; init_db()"
-```
+- `GET /api/dossiers/historical-comparison`
 
-### 4. Start both services
+Campos clave:
 
-```bash
-make dev
-# or: bash run_dev.sh
-```
+- `current_vs_previous`
+- `current_vs_selected`
+- `history_series`
+- `snapshot_status`
 
-| Service | URL |
-|---------|-----|
-| Dash Dashboard | http://localhost:8050 |
-| FastAPI Swagger UI | http://localhost:8000/api/docs |
+### Executive report
 
-### 5. Development tips
+Endpoint:
 
-```bash
-make api    # FastAPI only
-make dash   # Dash only
-make test   # Run pytest
-make lint   # Run ruff linter
-```
+- `GET /api/dossiers/executive-report`
 
----
+Campos clave:
 
-## Adding a New QA Module
+- `weekly_highlights`
+- `risk_exception_summary` (v0.7)
+- `high_value_insights` (v0.7)
+- `executive_summary_table`
 
-1. Create `modules/your_module/` with `data_loader.py`, `metrics.py`, `dashboard.py`
-2. Add a router in `backend/routers/your_module.py`
-3. Register the router in `backend/main.py`
-4. Add a layout in `dashboard/layouts/your_layout.py`
-5. Add callbacks in `dashboard/callbacks/your_callbacks.py`
-6. Register the new route in `dashboard/app.py` → `render_page()`
+## 6. Persistencia historica
 
----
+Snapshots semanales en SQLite (`database/qa_platform.db`) con:
 
-## Production Deployment (Linux/Nginx)
+- semana de analisis
+- hash de fuente activa
+- KPIs de snapshot
+- payload semanal serializado
+- resumen ejecutivo serializado
 
-```bash
-# 1. Install Nginx
-sudo apt install nginx
+Comando recomendado:
 
-# 2. Copy nginx config
-sudo cp nginx.conf /etc/nginx/sites-available/qa_platform
-sudo ln -s /etc/nginx/sites-available/qa_platform /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
+- `python -m scripts.build_weekly_snapshot --week <N>`
 
-# 3. Run with gunicorn (production-grade WSGI)
-# FastAPI
-gunicorn backend.main:app -w 2 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 &
+## 7. Operacion y hardening
 
-# Dash
-gunicorn dashboard.app:server -w 2 --bind 0.0.0.0:8050 &
-```
+Comandos principales:
 
----
+- `make qa-start` / `make qa-stop`
+- `make snapshot`
+- `make audit-kpis`
+- `make inspect-management`
+- `make smoke`
 
-## Design Principles
+Artefactos runtime no versionables:
 
-- **Single source of truth**: All KPI maths live in `core/metricas.py`. The analytics layer adapts output format; it never shadows the logic.
-- **Module isolation**: Each QA discipline (`dossier_control`, `welding_control` …) owns its data loading, metrics, and chart factories.
-- **API-first**: The Dash dashboard communicates with FastAPI via HTTP. If the API is down, callbacks fall back to direct module imports.
-- **Security by default**: Security headers are applied at the middleware level. API-key auth is opt-in (set `API_ACCESS_KEY`).
-- **Zero lock-in**: CSV files remain the primary data store. SQLite is additive (audit log, NC forms). Existing scripts are untouched.
+- `.runtime/`
+- `*.db-shm`
+- `*.db-wal`
+
+## 8. Validacion de release (ruta minima)
+
+1. Levantar plataforma: `make qa-start`
+2. Smoke compacto: `make smoke`
+3. Tests: `pytest tests/ -v --tb=short`
+4. Cierre: `make qa-stop`
+
+El smoke valida:
+
+- Salud backend y dashboard (si se pasan URLs)
+- Payload weekly
+- Payload historical
+- Payload executive
+
+## 9. Fuera de alcance intencional
+
+- Integraciones de nuevos datasets en esta version.
+- Reescritura de reglas KPI o semantica historica ya aprobadas.
+- Reintroduccion de loaders legacy o contratistas adicionales en el flujo activo.
