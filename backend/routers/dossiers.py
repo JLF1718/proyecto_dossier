@@ -90,7 +90,7 @@ def _df_to_records(df: pd.DataFrame) -> List[Dict[str, Any]]:
 
 @router.get("", summary="List dossiers (paginated, filterable)")
 def list_dossiers(
-    contratista: Optional[str] = Query(None, description="Filter by contractor name (e.g. BAYSA, JAMAR)"),
+    contratista: Optional[str] = Query(None, description="Filter by contractor key. Active dossier flow is BAYSA-only."),
     estatus: Optional[str] = Query(None, description="Filter by status (PLANEADO, OBSERVADO, EN_REVISIÓN, LIBERADO)"),
     etapa: Optional[str] = Query(None, description="Filter by construction stage"),
     entrega: Optional[str] = Query(None, description="Filter by delivery week (e.g. S186)"),
@@ -116,7 +116,7 @@ def list_dossiers(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@router.get("/contractors", summary="List available contractors")
+@router.get("/contractors", summary="List active contractor keys")
 def list_contractors() -> List[str]:
     try:
         return _available_contractors()
@@ -209,7 +209,7 @@ def dossier_executive_report(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@router.get("/{contractor}", summary="Get dossiers for a single contractor")
+@router.get("/{contractor}", summary="Get dossiers for the requested contractor key")
 def get_contractor_dossiers(
     contractor: str,
     estatus: Optional[str] = Query(None),
@@ -221,7 +221,7 @@ def get_contractor_dossiers(
         key = contractor.upper()
         df = _load_api_dossiers()
         if key not in _available_contractors(df):
-            raise ValueError(f"Unsupported contractor: {contractor}.")
+            raise ValueError(f"Unsupported contractor key: {contractor}. Active dossier flow is BAYSA-only.")
 
         df = _filter_df(df, contratista=key, estatus=estatus, etapa=etapa, entrega=None)
         total = len(df)

@@ -146,6 +146,8 @@ def test_kpis_weight_audit_reports_raw_in_scope_and_displayed_tons():
     assert audit["displayed_total_weight_t"] == 3.5
     assert audit["displayed_weight_unit"] == "t"
     assert kpis["peso_total_ton"] == 3.5
+    assert kpis["peso_liberado_ton"] == 3.5
+    assert kpis["pct_peso_liberado"] == 100.0
 
 
 def test_compute_kpis_standardizes_baysa_processed_frame_and_excludes_out_of_scope_weight():
@@ -170,6 +172,8 @@ def test_compute_kpis_standardizes_baysa_processed_frame_and_excludes_out_of_sco
     assert audit["raw_total_weight_kg"] == 4000.0
     assert audit["in_scope_total_weight_kg"] == 2000.0
     assert audit["displayed_total_weight_t"] == 2.0
+    assert kpis["peso_liberado_ton"] == 2.0
+    assert kpis["pct_peso_liberado"] == 100.0
 
 
 def test_compute_kpis_prefers_block_weight_for_totals_and_warns_on_large_delta():
@@ -194,7 +198,10 @@ def test_compute_kpis_prefers_block_weight_for_totals_and_warns_on_large_delta()
     assert audit["in_scope_block_vs_dossier_delta_kg"] == 358500.0
     assert audit["delta_warning_triggered"] is True
     assert kpis["peso_total_ton"] == 360.0
-    assert kpis["peso_liberado_ton"] == 250.0
+    assert kpis["peso_liberado_ton"] == 1.0
+    assert kpis["pct_peso_liberado"] == 0.28
+    assert kpis["peso_liberado_bloque_ton"] == 250.0
+    assert kpis["pct_peso_liberado_bloque"] == 69.44
 
 
 def test_analysis_week_resolver_uses_selected_week_or_latest_available_week():

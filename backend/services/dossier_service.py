@@ -719,13 +719,18 @@ def _build_kpis(df: pd.DataFrame) -> Dict[str, Any]:
     rejected = distribution["rejected"]
     peso_total_ton = float(weight_audit["displayed_total_weight_t"])
 
-    kpi_weight_column = str(weight_audit.get("kpi_weight_column", "weight_kg"))
     approved_mask = scoped.get("status") == "approved" if "status" in scoped.columns else pd.Series(False, index=scoped.index)
+    documented_release_weight_column = "weight_dossier_kg" if "weight_dossier_kg" in scoped.columns else "weight_kg"
+    block_release_weight_column = str(weight_audit.get("kpi_weight_column", "weight_kg"))
     peso_aprobado_ton = round(
-        float(scoped.loc[approved_mask, kpi_weight_column].sum() / 1000.0), 2
-    ) if not scoped.empty and "status" in scoped.columns and kpi_weight_column in scoped.columns else 0.0
+        float(scoped.loc[approved_mask, documented_release_weight_column].sum() / 1000.0), 2
+    ) if not scoped.empty and "status" in scoped.columns and documented_release_weight_column in scoped.columns else 0.0
+    peso_aprobado_bloque_ton = round(
+        float(scoped.loc[approved_mask, block_release_weight_column].sum() / 1000.0), 2
+    ) if not scoped.empty and "status" in scoped.columns and block_release_weight_column in scoped.columns else 0.0
     pct_approved = round((approved / total_dossiers * 100.0), 2) if total_dossiers else 0.0
     pct_peso_approved = round((peso_aprobado_ton / peso_total_ton * 100.0), 2) if peso_total_ton else 0.0
+    pct_peso_aprobado_bloque = round((peso_aprobado_bloque_ton / peso_total_ton * 100.0), 2) if peso_total_ton else 0.0
 
     return {
         "total_rows": total_rows,
@@ -740,9 +745,12 @@ def _build_kpis(df: pd.DataFrame) -> Dict[str, Any]:
         # Backward-compatible keys still used by existing dashboard widgets.
         "dossiers_liberados": approved,
         "pct_liberado": pct_approved,
+        # Contractual total weight stays block-based; released weight is documented dossier weight.
         "peso_total_ton": peso_total_ton,
         "peso_liberado_ton": peso_aprobado_ton,
         "pct_peso_liberado": pct_peso_approved,
+        "peso_liberado_bloque_ton": peso_aprobado_bloque_ton,
+        "pct_peso_liberado_bloque": pct_peso_aprobado_bloque,
         "weight_audit": weight_audit,
     }
 
@@ -838,10 +846,13 @@ def compute_kpis(df: pd.DataFrame) -> Dict[str, Any]:
         - ``rejected_dossiers``     – status == "rejected" (0 in current BAYSA data)
         - ``rows_in_contract_scope``– same as total_dossiers
         - ``rows_out_of_scope``     – rows excluded from KPIs (N° == "--")
-        - ``total_rows``            – all rows before scope filter
-        - ``status_distribution``   – {approved, pending, in_review, rejected}
-        - Legacy backward-compat keys: ``dossiers_liberados``, ``pct_liberado``,
-          ``peso_total_ton``, ``peso_liberado_ton``, ``pct_peso_liberado``
+                - ``total_rows``            – all rows before scope filter
+                - ``status_distribution``   – {approved, pending, in_review, rejected}
+                - Legacy backward-compat keys: ``dossiers_liberados``, ``pct_liberado``,
+                    ``peso_total_ton`` (contractual block baseline),
+                    ``peso_liberado_ton`` (documented dossier-supported released weight),
+                    ``pct_peso_liberado`` (documented released / contractual total)
+                - Optional clarity keys: ``peso_liberado_bloque_ton``, ``pct_peso_liberado_bloque``
 
     Logs:
         status_distribution with approved/pending/in_review/rejected counts
@@ -1276,6 +1287,8 @@ def build_weight_kpi_audit_payload(df: Optional[pd.DataFrame] = None) -> Dict[st
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "source": "data/processed/baysa_dossiers_clean.csv",
+        "released_weight_policy": "documented dossier-supported approved weight",
+        "total_weight_policy": "contractual in-scope block baseline weight",
         "weight_audit": kpis.get("weight_audit", {}),
         "kpis": kpis,
     }

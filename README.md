@@ -202,7 +202,7 @@ docs/                 Documentación canónica
 
 ## Datos y salidas
 
-- CSV activos en `data/contratistas/BAYSA/` y `data/contratistas/JAMAR/`.
+- CSV activo del flujo de dossieres en `data/processed/baysa_dossiers_clean.csv`.
 - Dashboards HTML en `output/dashboards/`.
 - Exportes históricos por semana en `output/historico/`.
 - Poster principal BAYSA (el más reciente) en `output/tablas/` — es el que muestra la web app.
