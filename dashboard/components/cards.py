@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict
 
 import dash_bootstrap_components as dbc
-from dash import html
+from dash import dash_table, html
 
 
 def _fmt_int(value: Any) -> str:
@@ -20,6 +20,13 @@ def _fmt_tons(value: Any) -> str:
         return f"{float(value):,.1f}"
     except (TypeError, ValueError):
         return "0.0"
+
+
+def _fmt_pct(value: Any) -> str:
+    try:
+        return f"{float(value):,.1f}%"
+    except (TypeError, ValueError):
+        return "0.0%"
 
 
 def _kpi_card(
@@ -144,3 +151,76 @@ def quality_cards(kpis: Dict[str, Any]) -> dbc.Row:
         )
 
     return dbc.Row(cards)
+
+
+def executive_summary_table(summary_df: Any) -> dbc.Card:
+    if summary_df is None or getattr(summary_df, "empty", True):
+        return dbc.Card(
+            dbc.CardBody(html.Div("No data available for the selected filters.", className="text-muted")),
+            className="qa-panel",
+        )
+
+    display = summary_df.copy()
+    display["Building Family"] = display["building_family"].astype(str)
+    display["Stage / Dossier Type"] = display["stage_category"].astype(str)
+    display["Total Dossiers"] = display["total_dossiers"].apply(_fmt_int)
+    display["Approved"] = display["approved"].apply(_fmt_int)
+    display["Pending"] = display["pending"].apply(_fmt_int)
+    display["In Review"] = display["in_review"].apply(_fmt_int)
+    display["Approval %"] = display["approval_pct"].apply(_fmt_pct)
+    display["Released Weight (t)"] = display["released_weight_t"].apply(_fmt_tons)
+    display["Out of Scope"] = display["out_of_scope"].apply(_fmt_int)
+
+    table_columns = [
+        "Building Family",
+        "Stage / Dossier Type",
+        "Total Dossiers",
+        "Approved",
+        "Pending",
+        "In Review",
+        "Approval %",
+        "Released Weight (t)",
+        "Out of Scope",
+    ]
+
+    return dbc.Card(
+        dbc.CardBody(
+            dash_table.DataTable(
+                data=display[table_columns].to_dict("records"),
+                columns=[{"name": column, "id": column} for column in table_columns],
+                page_action="none",
+                style_table={"overflowX": "auto"},
+                style_cell={
+                    "fontSize": "12px",
+                    "padding": "8px 10px",
+                    "fontFamily": "IBM Plex Sans, sans-serif",
+                    "border": "none",
+                    "whiteSpace": "normal",
+                    "height": "auto",
+                    "textAlign": "right",
+                },
+                style_cell_conditional=[
+                    {"if": {"column_id": "Building Family"}, "textAlign": "left", "fontWeight": "600", "minWidth": "110px"},
+                    {"if": {"column_id": "Stage / Dossier Type"}, "textAlign": "left", "minWidth": "200px"},
+                ],
+                style_header={
+                    "backgroundColor": "#eef3f8",
+                    "color": "#10222f",
+                    "fontWeight": "700",
+                    "borderBottom": "1px solid #9db4c7",
+                    "textTransform": "uppercase",
+                    "fontSize": "11px",
+                    "letterSpacing": "0.03em",
+                },
+                style_data={
+                    "backgroundColor": "#ffffff",
+                    "color": "#10222f",
+                    "borderBottom": "1px solid #d8e2eb",
+                },
+                style_data_conditional=[
+                    {"if": {"row_index": "odd"}, "backgroundColor": "#f8fbfd"},
+                ],
+            )
+        ),
+        className="qa-panel",
+    )

@@ -82,6 +82,63 @@ def derive_building_family(df: pd.DataFrame) -> pd.Series:
     return family
 
 
+def executive_summary_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Summarize dossier counts and released weight by family and stage."""
+    columns = [
+        "building_family",
+        "stage_category",
+        "total_dossiers",
+        "approved",
+        "pending",
+        "in_review",
+        "approval_pct",
+        "released_weight_t",
+        "out_of_scope",
+    ]
+    if df.empty:
+        return pd.DataFrame(columns=columns)
+
+    work = df.copy()
+    work["status"] = _classify_status(work.get("estatus", pd.Series(index=work.index, dtype=object)))
+    work["stage_category"] = derive_stage_category(work)
+    work["building_family"] = derive_building_family(work)
+    work = work[
+        work["stage_category"].isin(_STAGE_ORDER)
+        & work["building_family"].isin(_FAMILY_ORDER)
+    ].copy()
+    if work.empty:
+        return pd.DataFrame(columns=columns)
+
+    in_scope = work.get("in_contract_scope", pd.Series(True, index=work.index)).astype(str).str.lower().isin(["true", "1", "yes"])
+    weight_t = pd.to_numeric(work.get("peso_dossier_kg", 0), errors="coerce").fillna(0.0) / 1000.0
+
+    work["total_dossiers"] = in_scope.astype(int)
+    work["approved"] = (in_scope & work["status"].eq("approved")).astype(int)
+    work["pending"] = (in_scope & work["status"].eq("pending")).astype(int)
+    work["in_review"] = (in_scope & work["status"].eq("in_review")).astype(int)
+    work["released_weight_t"] = weight_t.where(in_scope & work["status"].eq("approved"), 0.0)
+    work["out_of_scope"] = (~in_scope).astype(int)
+
+    work["building_family"] = pd.Categorical(work["building_family"], categories=_FAMILY_ORDER, ordered=True)
+    work["stage_category"] = pd.Categorical(work["stage_category"], categories=_STAGE_ORDER, ordered=True)
+
+    summary = (
+        work.groupby(["building_family", "stage_category"], observed=True)
+        .agg(
+            total_dossiers=("total_dossiers", "sum"),
+            approved=("approved", "sum"),
+            pending=("pending", "sum"),
+            in_review=("in_review", "sum"),
+            released_weight_t=("released_weight_t", "sum"),
+            out_of_scope=("out_of_scope", "sum"),
+        )
+        .reset_index()
+    )
+    summary["approval_pct"] = summary["approved"].div(summary["total_dossiers"].where(summary["total_dossiers"] > 0)).fillna(0.0) * 100.0
+
+    return summary[columns]
+
+
 def empty_figure(title: str, message: str) -> go.Figure:
     fig = go.Figure()
     fig.update_layout(
