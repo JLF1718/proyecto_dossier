@@ -161,6 +161,18 @@ def empty_figure(title: str, message: str) -> go.Figure:
     return fig
 
 
+def _weekly_payload_frame(payload: Dict[str, Any], key: str) -> pd.DataFrame:
+    comparison = payload.get("weekly_comparison", {}) if payload else {}
+    records = comparison.get(key, [])
+    if not records:
+        return pd.DataFrame()
+    return pd.DataFrame(records)
+
+
+def _week_labels(series: pd.Series) -> list[str]:
+    return [f"W{int(value)}" for value in series.tolist()]
+
+
 def progress_figure(df: pd.DataFrame) -> go.Figure:
     if df.empty or "CONTRATISTA" not in df.columns or "ESTATUS" not in df.columns:
         return empty_figure("Contractor delivery progress", "No data available")
@@ -427,5 +439,107 @@ def weekly_accumulated_progress_figure(df: pd.DataFrame) -> go.Figure:
         legend_title="Series",
         title_x=0.01,
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0.0},
+    )
+    return fig
+
+
+def weekly_released_dossiers_figure(payload: Dict[str, Any]) -> go.Figure:
+    release_series = _weekly_payload_frame(payload, "release_series")
+    if release_series.empty:
+        return empty_figure("Weekly released dossiers", "No weekly release data available")
+
+    fig = go.Figure(
+        go.Bar(
+            x=_week_labels(release_series["week"]),
+            y=release_series["released_dossiers"],
+            marker_color=_STATUS_COLORS["approved"],
+            text=release_series["released_dossiers"].where(release_series["released_dossiers"] > 0).astype("Int64").astype(str).replace("<NA>", ""),
+            textposition="outside",
+        )
+    )
+    fig.update_layout(
+        template="plotly_white",
+        title="Weekly released dossiers",
+        xaxis_title="Actual release week",
+        yaxis_title="Released dossiers",
+        margin={"l": 12, "r": 12, "t": 64, "b": 48},
+        title_x=0.01,
+    )
+    return fig
+
+
+def weekly_released_weight_figure(payload: Dict[str, Any]) -> go.Figure:
+    release_series = _weekly_payload_frame(payload, "release_series")
+    if release_series.empty:
+        return empty_figure("Weekly released weight", "No weekly release data available")
+
+    fig = go.Figure(
+        go.Bar(
+            x=_week_labels(release_series["week"]),
+            y=release_series["released_weight_t"],
+            marker_color="#0f6cbd",
+            text=release_series["released_weight_t"].apply(lambda value: f"{float(value):.1f}" if float(value) > 0 else ""),
+            textposition="outside",
+        )
+    )
+    fig.update_layout(
+        template="plotly_white",
+        title="Weekly released weight",
+        xaxis_title="Actual release week",
+        yaxis_title="Released weight (t)",
+        margin={"l": 12, "r": 12, "t": 64, "b": 48},
+        title_x=0.01,
+    )
+    return fig
+
+
+def cumulative_approved_growth_figure(payload: Dict[str, Any]) -> go.Figure:
+    cumulative_series = _weekly_payload_frame(payload, "cumulative_series")
+    if cumulative_series.empty:
+        return empty_figure("Cumulative approved growth", "No cumulative release data available")
+
+    fig = go.Figure(
+        go.Scatter(
+            x=_week_labels(cumulative_series["week"]),
+            y=cumulative_series["cumulative_approved_dossiers"],
+            mode="lines+markers",
+            line={"width": 3, "color": _STATUS_COLORS["approved"]},
+            marker={"size": 7},
+            name="Cumulative approved",
+        )
+    )
+    fig.update_layout(
+        template="plotly_white",
+        title="Cumulative approved growth",
+        xaxis_title="Actual release week",
+        yaxis_title="Approved dossiers",
+        margin={"l": 12, "r": 12, "t": 64, "b": 48},
+        title_x=0.01,
+    )
+    return fig
+
+
+def cumulative_released_weight_growth_figure(payload: Dict[str, Any]) -> go.Figure:
+    cumulative_series = _weekly_payload_frame(payload, "cumulative_series")
+    if cumulative_series.empty:
+        return empty_figure("Cumulative released weight growth", "No cumulative release data available")
+
+    fig = go.Figure(
+        go.Scatter(
+            x=_week_labels(cumulative_series["week"]),
+            y=cumulative_series["cumulative_released_weight_t"],
+            mode="lines+markers",
+            line={"width": 3, "color": "#0f6cbd"},
+            marker={"size": 7},
+            name="Cumulative released weight",
+        )
+    )
+    fig.update_layout(
+        template="plotly_white",
+        title="Cumulative released weight growth",
+        xaxis_title="Actual release week",
+        yaxis_title="Released weight (t)",
+        margin={"l": 12, "r": 12, "t": 64, "b": 48},
+        title_x=0.01,
     )
     return fig

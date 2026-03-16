@@ -14,6 +14,7 @@ BACKEND_PID_FILE="${RUNTIME_DIR}/backend.pid"
 DASHBOARD_PID_FILE="${RUNTIME_DIR}/dashboard.pid"
 BACKEND_LOG_FILE="${RUNTIME_DIR}/backend.log"
 DASHBOARD_LOG_FILE="${RUNTIME_DIR}/dashboard.log"
+HEALTH_TIMEOUT_SECONDS=45
 
 is_pid_running() {
     local pid="$1"
@@ -44,6 +45,51 @@ is_port_in_use() {
         echo "[ERROR] Neither 'ss' nor 'lsof' is available to check ports."
         exit 1
     fi
+}
+
+http_is_healthy() {
+    local url="$1"
+
+    if command -v curl >/dev/null 2>&1; then
+        curl --silent --fail --max-time 2 "${url}" >/dev/null
+        return $?
+    fi
+
+    if command -v wget >/dev/null 2>&1; then
+        wget --quiet --tries=1 --timeout=2 --output-document=/dev/null "${url}"
+        return $?
+    fi
+
+    echo "[ERROR] Neither 'curl' nor 'wget' is available for HTTP health checks."
+    return 1
+}
+
+wait_for_http_health() {
+    local label="$1"
+    local url="$2"
+    local timeout_seconds="$3"
+    local pid="${4:-}"
+
+    echo "[INFO] Waiting for ${label} health at ${url} (timeout: ${timeout_seconds}s)..."
+
+    local elapsed=0
+    while (( elapsed < timeout_seconds )); do
+        if [[ -n "${pid}" ]] && ! is_pid_running "${pid}"; then
+            echo "[ERROR] ${label} process exited before health check succeeded."
+            return 1
+        fi
+
+        if http_is_healthy "${url}"; then
+            echo "[INFO] ${label} is healthy."
+            return 0
+        fi
+
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+
+    echo "[ERROR] Timed out waiting for ${label} health at ${url}."
+    return 1
 }
 
 cd "${PROJECT_DIR}"
@@ -107,11 +153,15 @@ if [[ "${backend_running}" == false ]]; then
     echo "${backend_pid}" > "${BACKEND_PID_FILE}"
     echo "backend started (PID ${backend_pid})"
 
-    sleep 3
-
-    if ! is_pid_running "${backend_pid}"; then
-        echo "[ERROR] Backend failed to start. Check ${BACKEND_LOG_FILE}"
+    if ! wait_for_http_health "backend" "http://127.0.0.1:${BACKEND_PORT}" "${HEALTH_TIMEOUT_SECONDS}" "${backend_pid}"; then
+        echo "[ERROR] Backend failed health check. Check ${BACKEND_LOG_FILE}"
         rm -f "${BACKEND_PID_FILE}"
+        exit 1
+    fi
+else
+    backend_pid="$(cat "${BACKEND_PID_FILE}" 2>/dev/null || true)"
+    if ! wait_for_http_health "backend" "http://127.0.0.1:${BACKEND_PORT}" "${HEALTH_TIMEOUT_SECONDS}" "${backend_pid}"; then
+        echo "[ERROR] Backend is running but not healthy. Check ${BACKEND_LOG_FILE}"
         exit 1
     fi
 fi
@@ -121,14 +171,24 @@ if [[ "${dashboard_running}" == false ]]; then
         QA_API_BASE_URL="http://127.0.0.1:${BACKEND_PORT}" \
         DASH_HOST="0.0.0.0" \
         DASH_PORT="${DASHBOARD_PORT}" \
-        "${DASH_PYTHON_BIN}" dashboard/app.py \
+        PYTHONPATH="${PROJECT_DIR}" \
+        "${DASH_PYTHON_BIN}" -m dashboard.app \
         >"${DASHBOARD_LOG_FILE}" 2>&1 &
     dashboard_pid=$!
     echo "${dashboard_pid}" > "${DASHBOARD_PID_FILE}"
     echo "dashboard started (PID ${dashboard_pid})"
 
-    if ! is_pid_running "${dashboard_pid}"; then
-        echo "[ERROR] Dashboard failed to start. Check ${DASHBOARD_LOG_FILE}"
+    if ! wait_for_http_health "dashboard" "http://127.0.0.1:${DASHBOARD_PORT}" "${HEALTH_TIMEOUT_SECONDS}" "${dashboard_pid}"; then
+        echo "[ERROR] Dashboard failed health check. Last dashboard log lines:"
+        tail -n 40 "${DASHBOARD_LOG_FILE}" || true
+        rm -f "${DASHBOARD_PID_FILE}"
+        exit 1
+    fi
+else
+    dashboard_pid="$(cat "${DASHBOARD_PID_FILE}" 2>/dev/null || true)"
+    if ! wait_for_http_health "dashboard" "http://127.0.0.1:${DASHBOARD_PORT}" "${HEALTH_TIMEOUT_SECONDS}" "${dashboard_pid}"; then
+        echo "[ERROR] Dashboard process exists but health check failed. Last dashboard log lines:"
+        tail -n 40 "${DASHBOARD_LOG_FILE}" || true
         rm -f "${DASHBOARD_PID_FILE}"
         exit 1
     fi
