@@ -44,6 +44,7 @@ from dashboard.components.figures import (
     weekly_accumulated_progress_figure,
     weekly_progress_figure,
 )
+from dashboard.i18n import normalize_lang, stage_label, t
 from dashboard.layout import create_layout
 
 _PROCESSED_CSV_PATH = _PROJECT_ROOT / "data" / "processed" / "baysa_dossiers_clean.csv"
@@ -137,6 +138,79 @@ app.layout = create_layout()
 
 
 @app.callback(
+    Output("language-store", "data"),
+    Input("language-selector", "value"),
+)
+def update_language_store(language_value: Optional[str]) -> Dict[str, str]:
+    return {"lang": normalize_lang(language_value)}
+
+
+@app.callback(
+    Output("hero-kicker", "children"),
+    Output("hero-title", "children"),
+    Output("hero-subtitle", "children"),
+    Output("section-executive-overview", "children"),
+    Output("section-weekly-management", "children"),
+    Output("section-dossier-analysis", "children"),
+    Output("section-executive-summary", "children"),
+    Output("section-quality-signals", "children"),
+    Output("filter-contractor-label", "children"),
+    Output("filter-discipline-label", "children"),
+    Output("filter-system-label", "children"),
+    Output("filter-week-label", "children"),
+    Output("filter-contractor", "placeholder"),
+    Output("filter-discipline", "placeholder"),
+    Output("filter-system", "placeholder"),
+    Output("filter-week", "placeholder"),
+    Output("language-selector", "options"),
+    Output("presentation-mode-label", "children"),
+    Output("presentation-mode-toggle", "options"),
+    Input("language-store", "data"),
+)
+def update_static_labels(language_store: Optional[Dict[str, str]]):
+    lang = normalize_lang((language_store or {}).get("lang"))
+
+    contractor = t(lang, "filter.contractor")
+    discipline = t(lang, "filter.discipline")
+    system = t(lang, "filter.system")
+    week = t(lang, "filter.week")
+
+    return (
+        t(lang, "hero.kicker"),
+        t(lang, "hero.title"),
+        t(lang, "hero.subtitle"),
+        t(lang, "section.executive_overview"),
+        t(lang, "section.weekly_management"),
+        t(lang, "section.dossier_analysis"),
+        t(lang, "section.executive_summary"),
+        t(lang, "section.quality_signals"),
+        contractor,
+        discipline,
+        system,
+        week,
+        t(lang, "filter.placeholder", label=contractor.lower()),
+        t(lang, "filter.placeholder", label=discipline.lower()),
+        t(lang, "filter.placeholder", label=system.lower()),
+        t(lang, "filter.placeholder", label=week.lower()),
+        [
+            {"label": t(lang, "lang.en"), "value": "en"},
+            {"label": t(lang, "lang.es"), "value": "es"},
+        ],
+        t(lang, "presentation.mode"),
+        [{"label": t(lang, "presentation.hint"), "value": "on"}],
+    )
+
+
+@app.callback(
+    Output("qa-shell-root", "className"),
+    Input("presentation-mode-toggle", "value"),
+)
+def update_presentation_mode(toggle_value: Optional[list[str]]) -> str:
+    is_presentation = bool(toggle_value) and "on" in toggle_value
+    return "qa-shell qa-export-ready" if is_presentation else "qa-shell"
+
+
+@app.callback(
     Output("filter-contractor", "options"),
     Output("filter-discipline", "options"),
     Output("filter-system", "options"),
@@ -155,17 +229,20 @@ app.layout = create_layout()
     Output("weekly-progress-graph", "figure"),
     Output("weekly-accum-graph", "figure"),
     Output("executive-summary-table", "children"),
+    Input("language-store", "data"),
     Input("filter-contractor", "value"),
     Input("filter-discipline", "value"),
     Input("filter-system", "value"),
     Input("filter-week", "value"),
 )
 def update_dashboard(
+    language_store: Optional[Dict[str, str]],
     contractor: Optional[str],
     discipline: Optional[str],
     system: Optional[str],
     week: Optional[str],
 ):
+    lang = normalize_lang((language_store or {}).get("lang"))
     local_df = _load_local_dossier_csv()
     in_scope_df = _in_scope(local_df).copy()
 
@@ -189,7 +266,7 @@ def update_dashboard(
         week=week,
         include_out_of_scope=True,
     )
-    summary_table = executive_summary_table(executive_summary_frame(summary_filtered))
+    summary_table = executive_summary_table(executive_summary_frame(summary_filtered), lang=lang)
     management_filtered = _apply_local_csv_filters(
         local_df,
         contractor=contractor,
@@ -211,7 +288,7 @@ def update_dashboard(
         if str(v).strip()
     }
     discipline_values = [stage for stage in _STAGE_FILTER_ORDER if stage in stage_values]
-    discipline_options = [{"label": str(v), "value": str(v)} for v in discipline_values]
+    discipline_options = [{"label": stage_label(str(v), lang), "value": str(v)} for v in discipline_values]
 
     family_values = ["PRO", "SUE", "SHARED"]
     system_options = [{"label": v, "value": v} for v in family_values]
@@ -222,26 +299,26 @@ def update_dashboard(
             int(s)
             for s in pd.to_numeric(in_scope_df["hito_semana"], errors="coerce").dropna().unique()
         )
-        week_options = [{"label": f"Week {s}", "value": str(s)} for s in semanas]
+        week_options = [{"label": t(lang, "week.label", week=s), "value": str(s)} for s in semanas]
 
     return (
         contractor_options,
         discipline_options,
         system_options,
         week_options,
-        executive_cards(kpi_payload),
-        weekly_management_cards(weekly_payload),
-        quality_cards(kpi_payload),
-        weekly_released_dossiers_figure(weekly_payload),
-        weekly_released_weight_figure(weekly_payload),
-        cumulative_approved_growth_figure(weekly_payload),
-        cumulative_released_weight_growth_figure(weekly_payload),
-        backlog_aging_summary(weekly_payload),
-        stagnant_groups_summary(weekly_payload),
-        status_by_stage_figure(local_filtered),
-        status_by_block_figure(local_filtered),
-        weekly_progress_figure(local_filtered),
-        weekly_accumulated_progress_figure(local_filtered),
+        executive_cards(kpi_payload, lang=lang),
+        weekly_management_cards(weekly_payload, lang=lang),
+        quality_cards(kpi_payload, lang=lang),
+        weekly_released_dossiers_figure(weekly_payload, lang=lang),
+        weekly_released_weight_figure(weekly_payload, lang=lang),
+        cumulative_approved_growth_figure(weekly_payload, lang=lang),
+        cumulative_released_weight_growth_figure(weekly_payload, lang=lang),
+        backlog_aging_summary(weekly_payload, lang=lang),
+        stagnant_groups_summary(weekly_payload, lang=lang),
+        status_by_stage_figure(local_filtered, lang=lang),
+        status_by_block_figure(local_filtered, lang=lang),
+        weekly_progress_figure(local_filtered, lang=lang),
+        weekly_accumulated_progress_figure(local_filtered, lang=lang),
         summary_table,
     )
 
@@ -346,6 +423,28 @@ app.index_string = """
             .qa-secondary-kpis {
                 opacity: .92;
             }
+            .qa-export-section {
+                margin-bottom: 1rem;
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+            .qa-export-ready {
+                background: #f5f8fb;
+            }
+            .qa-export-ready .qa-hero {
+                box-shadow: 0 8px 18px rgba(9,26,45,.2);
+            }
+            .qa-export-ready .qa-panel {
+                box-shadow: 0 4px 12px rgba(16,34,47,.08);
+                border-color: rgba(157,180,199,.62);
+            }
+            .qa-export-ready .qa-kpi-zone {
+                border-bottom-color: rgba(157,180,199,.55);
+            }
+            .qa-export-ready .qa-section-title {
+                margin-top: .4rem !important;
+                margin-bottom: .55rem !important;
+            }
       .qa-panel {
                 border: 1px solid rgba(157,180,199,.48);
         border-radius: 16px;
@@ -367,6 +466,37 @@ app.index_string = """
                 font-size: .78rem;
                 letter-spacing: .02em;
       }
+            @media print {
+                body {
+                    background: #ffffff !important;
+                }
+                .qa-shell {
+                    padding: 10mm;
+                }
+                .qa-hero {
+                    box-shadow: none;
+                    border: 1px solid #c7d4df;
+                    break-after: avoid;
+                    page-break-after: avoid;
+                }
+                .qa-panel {
+                    box-shadow: none;
+                    border: 1px solid #c7d4df;
+                    background: #ffffff;
+                }
+                .qa-filter-row,
+                .qa-export-controls,
+                .qa-presentation-toggle,
+                #language-selector,
+                #presentation-mode-toggle {
+                    display: none !important;
+                }
+                .qa-export-section {
+                    break-inside: avoid;
+                    page-break-inside: avoid;
+                    margin-bottom: 8mm;
+                }
+            }
       @media (max-width: 900px) {
         .qa-shell {
           padding: 12px;

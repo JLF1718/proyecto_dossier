@@ -8,6 +8,8 @@ import dash_bootstrap_components as dbc
 import pandas as pd
 from dash import dash_table, html
 
+from dashboard.i18n import t
+
 
 def _fmt_int(value: Any) -> str:
     try:
@@ -100,7 +102,7 @@ def _kpi_card(
     )
 
 
-def executive_cards(kpis: Dict[str, Any]) -> html.Div:
+def executive_cards(kpis: Dict[str, Any], lang: str = "en") -> html.Div:
     """Render Executive Overview KPI cards in two rows.
 
     Accepts the payload returned by ``/api/dossiers/kpis``
@@ -118,25 +120,25 @@ def executive_cards(kpis: Dict[str, Any]) -> html.Div:
     peso_liberado_ton = kpis.get("peso_liberado_ton", 0)
     pct_peso_liberado = kpis.get("pct_peso_liberado", 0)
 
-    pct_approved = f"{approved / total * 100:.1f}% of total" if total else "—"
+    pct_approved = t(lang, "label.of_total", value=f"{approved / total * 100:.1f}") if total else "—"
 
     return html.Div(
         [
             dbc.Row(
                 [
-                    _kpi_card("Total Dossiers", _fmt_int(total), "In contractual scope", "primary"),
-                    _kpi_card("Approved", _fmt_int(approved), pct_approved, "success"),
-                    _kpi_card("Pending", _fmt_int(pending), "Awaiting release", "warning"),
-                    _kpi_card("In Review", _fmt_int(in_review), "INPROS internal review", "info"),
+                    _kpi_card(t(lang, "kpi.total_dossiers"), _fmt_int(total), t(lang, "kpi.in_scope"), "primary"),
+                    _kpi_card(t(lang, "kpi.approved"), _fmt_int(approved), pct_approved, "success"),
+                    _kpi_card(t(lang, "kpi.pending"), _fmt_int(pending), t(lang, "kpi.awaiting_release"), "warning"),
+                    _kpi_card(t(lang, "kpi.in_review"), _fmt_int(in_review), t(lang, "kpi.internal_review"), "info"),
                 ]
             ),
             dbc.Row(
                 [
-                    _kpi_card("Out Of Scope Rows", _fmt_int(out_of_scope), "Excluded from contractual KPIs", "secondary", lg=4, xl=2),
-                    _kpi_card("Released %", f"{float(pct_liberado):.1f}%", "Dossiers released", "success", lg=4, xl=2),
-                    _kpi_card("Total In-Scope Weight (t)", _fmt_tons(peso_total_ton), "In-scope contractual weight", "primary", lg=6, xl=3),
-                    _kpi_card("Released Weight (t)", _fmt_tons(peso_liberado_ton), "Weight with approved status", "info", lg=6, xl=3),
-                    _kpi_card("Released Weight %", f"{float(pct_peso_liberado):.1f}%", "Weight-based progress", "warning", lg=4, xl=2),
+                    _kpi_card(t(lang, "kpi.out_of_scope_rows"), _fmt_int(out_of_scope), t(lang, "kpi.excluded_kpis"), "secondary", lg=4, xl=2),
+                    _kpi_card(t(lang, "kpi.released_pct"), f"{float(pct_liberado):.1f}%", t(lang, "kpi.dossiers_released"), "success", lg=4, xl=2),
+                    _kpi_card(t(lang, "kpi.total_weight"), _fmt_tons(peso_total_ton), t(lang, "kpi.in_scope_weight"), "primary", lg=6, xl=3),
+                    _kpi_card(t(lang, "kpi.released_weight"), _fmt_tons(peso_liberado_ton), t(lang, "kpi.weight_with_approved"), "info", lg=6, xl=3),
+                    _kpi_card(t(lang, "kpi.released_weight_pct"), f"{float(pct_peso_liberado):.1f}%", t(lang, "kpi.weight_based_progress"), "warning", lg=4, xl=2),
                 ],
                 className="mt-1",
             ),
@@ -144,7 +146,7 @@ def executive_cards(kpis: Dict[str, Any]) -> html.Div:
     )
 
 
-def quality_cards(kpis: Dict[str, Any]) -> dbc.Row:
+def quality_cards(kpis: Dict[str, Any], lang: str = "en") -> dbc.Row:
     total = max(int(kpis.get("total_dossiers", kpis.get("total", 0))), 1)
     rejected = int(kpis.get("rejected_dossiers", kpis.get("rejected", 0)))
     pending = int(kpis.get("pending_dossiers", kpis.get("pending", 0)))
@@ -157,17 +159,17 @@ def quality_cards(kpis: Dict[str, Any]) -> dbc.Row:
 
     cards = [
         _kpi_card(
-            "Open Backlog",
+            t(lang, "kpi.open_backlog"),
             _fmt_int(open_backlog),
-            f"{open_backlog_pct:.1f}% of in-scope dossiers",
+            t(lang, "label.of_in_scope", value=f"{open_backlog_pct:.1f}"),
             "warning",
             lg=6,
             xl=4,
         ),
         _kpi_card(
-            "Approval Delta",
+            t(lang, "kpi.approval_delta"),
             _fmt_int(approval_delta),
-            "Approved minus open backlog",
+            t(lang, "kpi.approved_minus_backlog"),
             "info",
             lg=6,
             xl=4,
@@ -177,9 +179,9 @@ def quality_cards(kpis: Dict[str, Any]) -> dbc.Row:
     if rejected > 0:
         cards.append(
             _kpi_card(
-                "Rejected Rate",
+                t(lang, "kpi.rejected_rate"),
                 f"{rejection_rate:.1f}%",
-                "Rejected dossier ratio",
+                t(lang, "kpi.rejected_ratio"),
                 "danger",
                 lg=6,
                 xl=4,
@@ -189,11 +191,11 @@ def quality_cards(kpis: Dict[str, Any]) -> dbc.Row:
     return dbc.Row(cards)
 
 
-def weekly_management_cards(payload: Dict[str, Any]) -> html.Div:
+def weekly_management_cards(payload: Dict[str, Any], lang: str = "en") -> html.Div:
     delta = payload.get("delta_kpis", {})
     analysis_week = delta.get("analysis_week")
     previous_week = delta.get("previous_week")
-    week_subtitle = f"{_fmt_week(analysis_week)} vs {_fmt_week(previous_week)}"
+    week_subtitle = t(lang, "label.week_compare", current=_fmt_week(analysis_week), previous=_fmt_week(previous_week))
 
     released_this_week = delta.get("released_this_week", 0)
     released_weight_this_week = delta.get("released_weight_t_this_week", 0.0)
@@ -203,31 +205,31 @@ def weekly_management_cards(payload: Dict[str, Any]) -> html.Div:
     return html.Div(
         dbc.Row(
             [
-                _kpi_card("Released This Week", _fmt_int(released_this_week), week_subtitle, "success"),
-                _kpi_card("Released Weight This Week", _fmt_tons(released_weight_this_week), "Actual released weight (t)", "info"),
-                _kpi_card("Change vs Previous Week", _fmt_signed_int(change_vs_previous_week), week_subtitle, _tone_for_delta(change_vs_previous_week)),
-                _kpi_card("Weight Change vs Previous Week", _fmt_signed_tons(weight_change_vs_previous_week), "Delta in released weight (t)", _tone_for_delta(weight_change_vs_previous_week)),
+                _kpi_card(t(lang, "kpi.released_this_week"), _fmt_int(released_this_week), week_subtitle, "success"),
+                _kpi_card(t(lang, "kpi.released_weight_this_week"), _fmt_tons(released_weight_this_week), t(lang, "kpi.actual_released_weight"), "info"),
+                _kpi_card(t(lang, "kpi.change_vs_prev"), _fmt_signed_int(change_vs_previous_week), week_subtitle, _tone_for_delta(change_vs_previous_week)),
+                _kpi_card(t(lang, "kpi.weight_change_vs_prev"), _fmt_signed_tons(weight_change_vs_previous_week), t(lang, "kpi.delta_released_weight"), _tone_for_delta(weight_change_vs_previous_week)),
             ]
         )
     )
 
 
-def backlog_aging_summary(payload: Dict[str, Any]) -> html.Div:
+def backlog_aging_summary(payload: Dict[str, Any], lang: str = "en") -> html.Div:
     summary = payload.get("backlog_aging_summary", {})
     groups = summary.get("groups", [])
 
     header_cards = dbc.Row(
         [
-            _kpi_card("Open Backlog", _fmt_int(summary.get("total_open_backlog", 0)), "Pending + In Review dossiers", "warning", lg=4),
-            _kpi_card("Oldest Reference Week", _fmt_week(summary.get("oldest_reference_week")), "Earliest planned week still open", "secondary", lg=4),
-            _kpi_card("Max Age", _fmt_int(summary.get("max_age_weeks", 0)), "Weeks since planned reference", "danger", lg=4),
+            _kpi_card(t(lang, "kpi.open_backlog"), _fmt_int(summary.get("total_open_backlog", 0)), t(lang, "kpi.pending_plus_review"), "warning", lg=4),
+            _kpi_card(t(lang, "kpi.oldest_ref_week"), _fmt_week(summary.get("oldest_reference_week")), t(lang, "kpi.earliest_open_week"), "secondary", lg=4),
+            _kpi_card(t(lang, "kpi.max_age"), _fmt_int(summary.get("max_age_weeks", 0)), t(lang, "kpi.weeks_since_planned"), "danger", lg=4),
         ],
         className="mb-1",
     )
 
     if not groups:
         table = dbc.Card(
-            dbc.CardBody(html.Div("No backlog aging groups for the selected filters.", className="text-muted")),
+            dbc.CardBody(html.Div(t(lang, "empty.no_backlog_groups"), className="text-muted")),
             className="qa-panel",
         )
         return html.Div([header_cards, table])
@@ -235,17 +237,20 @@ def backlog_aging_summary(payload: Dict[str, Any]) -> html.Div:
     table_df = pd.DataFrame(groups)
     display = pd.DataFrame(
         {
-            "Stage / Dossier Type": table_df["stage_category"].astype(str),
-            "Building Family": table_df["building_family"].astype(str),
-            "Open Backlog": table_df["open_backlog"].apply(_fmt_int),
-            "Pending": table_df["pending_dossiers"].apply(_fmt_int),
-            "In Review": table_df["in_review_dossiers"].apply(_fmt_int),
-            "Missing Ref Week": table_df["rows_without_reference_week"].apply(_fmt_int),
-            "Oldest Ref Week": table_df["oldest_reference_week"].apply(_fmt_week),
-            "Max Age (w)": table_df["max_age_weeks"].apply(_fmt_int),
-            "Avg Age (w)": table_df["avg_age_weeks"].apply(lambda value: f"{float(value):.1f}" if value is not None else "—"),
+            t(lang, "table.stage_type"): table_df["stage_category"].astype(str),
+            t(lang, "table.building_family"): table_df["building_family"].astype(str),
+            t(lang, "table.open_backlog"): table_df["open_backlog"].apply(_fmt_int),
+            t(lang, "table.pending"): table_df["pending_dossiers"].apply(_fmt_int),
+            t(lang, "table.in_review"): table_df["in_review_dossiers"].apply(_fmt_int),
+            t(lang, "table.missing_ref_week"): table_df["rows_without_reference_week"].apply(_fmt_int),
+            t(lang, "table.oldest_ref_week"): table_df["oldest_reference_week"].apply(_fmt_week),
+            t(lang, "table.max_age_w"): table_df["max_age_weeks"].apply(_fmt_int),
+            t(lang, "table.avg_age_w"): table_df["avg_age_weeks"].apply(lambda value: f"{float(value):.1f}" if value is not None else "—"),
         }
     )
+
+    stage_col = t(lang, "table.stage_type")
+    family_col = t(lang, "table.building_family")
 
     table = dbc.Card(
         dbc.CardBody(
@@ -264,8 +269,8 @@ def backlog_aging_summary(payload: Dict[str, Any]) -> html.Div:
                     "textAlign": "right",
                 },
                 style_cell_conditional=[
-                    {"if": {"column_id": "Stage / Dossier Type"}, "textAlign": "left", "minWidth": "180px"},
-                    {"if": {"column_id": "Building Family"}, "textAlign": "left", "fontWeight": "600", "minWidth": "110px"},
+                    {"if": {"column_id": stage_col}, "textAlign": "left", "minWidth": "180px"},
+                    {"if": {"column_id": family_col}, "textAlign": "left", "fontWeight": "600", "minWidth": "110px"},
                 ],
                 style_header={
                     "backgroundColor": "#eef3f8",
@@ -291,21 +296,21 @@ def backlog_aging_summary(payload: Dict[str, Any]) -> html.Div:
     return html.Div([header_cards, table])
 
 
-def stagnant_groups_summary(payload: Dict[str, Any]) -> html.Div:
+def stagnant_groups_summary(payload: Dict[str, Any], lang: str = "en") -> html.Div:
     summary = payload.get("stagnant_groups_summary", {})
     groups = summary.get("groups", [])
 
     header_cards = dbc.Row(
         [
-            _kpi_card("Stagnant Groups", _fmt_int(summary.get("stagnant_groups", 0)), "Groups with open backlog and no weekly movement", "danger", lg=6),
-            _kpi_card("Backlog in Stagnant Groups", _fmt_int(summary.get("total_open_backlog", 0)), "Open dossiers inside stagnant groups", "warning", lg=6),
+            _kpi_card(t(lang, "kpi.stagnant_groups"), _fmt_int(summary.get("stagnant_groups", 0)), t(lang, "kpi.no_movement_groups"), "danger", lg=6),
+            _kpi_card(t(lang, "kpi.backlog_in_stagnant"), _fmt_int(summary.get("total_open_backlog", 0)), t(lang, "kpi.open_in_stagnant"), "warning", lg=6),
         ],
         className="mb-1",
     )
 
     if not groups:
         table = dbc.Card(
-            dbc.CardBody(html.Div("No stagnant groups for the selected filters.", className="text-muted")),
+            dbc.CardBody(html.Div(t(lang, "empty.no_stagnant_groups"), className="text-muted")),
             className="qa-panel",
         )
         return html.Div([header_cards, table])
@@ -313,17 +318,20 @@ def stagnant_groups_summary(payload: Dict[str, Any]) -> html.Div:
     table_df = pd.DataFrame(groups)
     display = pd.DataFrame(
         {
-            "Stage / Dossier Type": table_df["stage_category"].astype(str),
-            "Building Family": table_df["building_family"].astype(str),
-            "Open Backlog": table_df["open_backlog"].apply(_fmt_int),
-            "Oldest Ref Week": table_df["oldest_reference_week"].apply(_fmt_week),
-            "Max Age (w)": table_df["max_age_weeks"].apply(_fmt_int),
-            "Released This Week": table_df["released_this_week"].apply(_fmt_int),
-            "Prev Week Releases": table_df["released_previous_week"].apply(_fmt_int),
-            "Cum Approved Growth": table_df["cumulative_approved_growth"].apply(_fmt_signed_int),
-            "Cum Weight Growth (t)": table_df["cumulative_released_weight_t_growth"].apply(_fmt_signed_tons),
+            t(lang, "table.stage_type"): table_df["stage_category"].astype(str),
+            t(lang, "table.building_family"): table_df["building_family"].astype(str),
+            t(lang, "table.open_backlog"): table_df["open_backlog"].apply(_fmt_int),
+            t(lang, "table.oldest_ref_week"): table_df["oldest_reference_week"].apply(_fmt_week),
+            t(lang, "table.max_age_w"): table_df["max_age_weeks"].apply(_fmt_int),
+            t(lang, "table.released_this_week"): table_df["released_this_week"].apply(_fmt_int),
+            t(lang, "table.prev_week_releases"): table_df["released_previous_week"].apply(_fmt_int),
+            t(lang, "table.cum_approved_growth"): table_df["cumulative_approved_growth"].apply(_fmt_signed_int),
+            t(lang, "table.cum_weight_growth"): table_df["cumulative_released_weight_t_growth"].apply(_fmt_signed_tons),
         }
     )
+
+    stage_col = t(lang, "table.stage_type")
+    family_col = t(lang, "table.building_family")
 
     table = dbc.Card(
         dbc.CardBody(
@@ -342,8 +350,8 @@ def stagnant_groups_summary(payload: Dict[str, Any]) -> html.Div:
                     "textAlign": "right",
                 },
                 style_cell_conditional=[
-                    {"if": {"column_id": "Stage / Dossier Type"}, "textAlign": "left", "minWidth": "180px"},
-                    {"if": {"column_id": "Building Family"}, "textAlign": "left", "fontWeight": "600", "minWidth": "110px"},
+                    {"if": {"column_id": stage_col}, "textAlign": "left", "minWidth": "180px"},
+                    {"if": {"column_id": family_col}, "textAlign": "left", "fontWeight": "600", "minWidth": "110px"},
                 ],
                 style_header={
                     "backgroundColor": "#eef3f8",
@@ -369,34 +377,44 @@ def stagnant_groups_summary(payload: Dict[str, Any]) -> html.Div:
     return html.Div([header_cards, table])
 
 
-def executive_summary_table(summary_df: Any) -> dbc.Card:
+def executive_summary_table(summary_df: Any, lang: str = "en") -> dbc.Card:
     if summary_df is None or getattr(summary_df, "empty", True):
         return dbc.Card(
-            dbc.CardBody(html.Div("No data available for the selected filters.", className="text-muted")),
+            dbc.CardBody(html.Div(t(lang, "empty.no_data_selected_filters"), className="text-muted")),
             className="qa-panel",
         )
 
     display = summary_df.copy()
-    display["Building Family"] = display["building_family"].astype(str)
-    display["Stage / Dossier Type"] = display["stage_category"].astype(str)
-    display["Total Dossiers"] = display["total_dossiers"].apply(_fmt_int)
-    display["Approved"] = display["approved"].apply(_fmt_int)
-    display["Pending"] = display["pending"].apply(_fmt_int)
-    display["In Review"] = display["in_review"].apply(_fmt_int)
-    display["Approval %"] = display["approval_pct"].apply(_fmt_pct)
-    display["Released Weight (t)"] = display["released_weight_t"].apply(_fmt_tons)
-    display["Out of Scope"] = display["out_of_scope"].apply(_fmt_int)
+    family_col = t(lang, "table.building_family")
+    stage_col = t(lang, "table.stage_type")
+    total_col = t(lang, "table.total_dossiers")
+    approved_col = t(lang, "table.approved")
+    pending_col = t(lang, "table.pending")
+    review_col = t(lang, "table.in_review")
+    approval_pct_col = t(lang, "table.approval_pct")
+    released_weight_col = t(lang, "table.released_weight")
+    out_scope_col = t(lang, "table.out_of_scope")
+
+    display[family_col] = display["building_family"].astype(str)
+    display[stage_col] = display["stage_category"].astype(str)
+    display[total_col] = display["total_dossiers"].apply(_fmt_int)
+    display[approved_col] = display["approved"].apply(_fmt_int)
+    display[pending_col] = display["pending"].apply(_fmt_int)
+    display[review_col] = display["in_review"].apply(_fmt_int)
+    display[approval_pct_col] = display["approval_pct"].apply(_fmt_pct)
+    display[released_weight_col] = display["released_weight_t"].apply(_fmt_tons)
+    display[out_scope_col] = display["out_of_scope"].apply(_fmt_int)
 
     table_columns = [
-        "Building Family",
-        "Stage / Dossier Type",
-        "Total Dossiers",
-        "Approved",
-        "Pending",
-        "In Review",
-        "Approval %",
-        "Released Weight (t)",
-        "Out of Scope",
+        family_col,
+        stage_col,
+        total_col,
+        approved_col,
+        pending_col,
+        review_col,
+        approval_pct_col,
+        released_weight_col,
+        out_scope_col,
     ]
 
     return dbc.Card(
@@ -416,8 +434,8 @@ def executive_summary_table(summary_df: Any) -> dbc.Card:
                     "textAlign": "right",
                 },
                 style_cell_conditional=[
-                    {"if": {"column_id": "Building Family"}, "textAlign": "left", "fontWeight": "600", "minWidth": "110px"},
-                    {"if": {"column_id": "Stage / Dossier Type"}, "textAlign": "left", "minWidth": "200px"},
+                    {"if": {"column_id": family_col}, "textAlign": "left", "fontWeight": "600", "minWidth": "110px"},
+                    {"if": {"column_id": stage_col}, "textAlign": "left", "minWidth": "200px"},
                 ],
                 style_header={
                     "backgroundColor": "#eef3f8",
