@@ -7,18 +7,14 @@ from typing import Any, Dict
 import pandas as pd
 import plotly.graph_objects as go
 
+from dashboard.i18n import stage_label, t
+
 # ── shared style constants ───────────────────────────────────────────────────
 
 _STATUS_COLORS: Dict[str, str] = {
     "approved": "#2e8540",
     "pending": "#d99000",
     "in_review": "#2d6fb7",
-}
-
-_STATUS_LABELS: Dict[str, str] = {
-    "approved": "Approved",
-    "pending": "Pending",
-    "in_review": "In Review",
 }
 
 _STAGE_ORDER = [
@@ -139,6 +135,10 @@ def executive_summary_frame(df: pd.DataFrame) -> pd.DataFrame:
     return summary[columns]
 
 
+def _status_label(lang: str, status: str) -> str:
+    return t(lang, f"status.{status}")
+
+
 def empty_figure(title: str, message: str) -> go.Figure:
     fig = go.Figure()
     fig.update_layout(
@@ -240,10 +240,10 @@ def welding_figure(metrics: Dict[str, Any]) -> go.Figure:
 
 # ── new dataset-driven figures ────────────────────────────────────────────────
 
-def status_by_stage_figure(df: pd.DataFrame) -> go.Figure:
+def status_by_stage_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
     """Stacked bar: dossier counts by business stage / dossier type."""
     if df.empty or "etapa" not in df.columns or "estatus" not in df.columns:
-        return empty_figure("Status by stage / dossier type", "No data available")
+        return empty_figure(t(lang, "figure.status_by_stage.title"), t(lang, "figure.no_data"))
 
     work = df.copy()
     work["status"] = _classify_status(work["estatus"])
@@ -259,13 +259,14 @@ def status_by_stage_figure(df: pd.DataFrame) -> go.Figure:
         if s not in grouped.columns:
             grouped[s] = 0
     grouped = grouped.reindex(_STAGE_ORDER, fill_value=0)
+    stage_labels = [stage_label(stage, lang) for stage in grouped.index.tolist()]
 
     fig = go.Figure()
     for status in ("approved", "pending", "in_review"):
         fig.add_trace(
             go.Bar(
-                name=_STATUS_LABELS[status],
-                x=grouped.index.tolist(),
+                name=_status_label(lang, status),
+                x=stage_labels,
                 y=grouped[status],
                 marker_color=_STATUS_COLORS[status],
                 text=grouped[status].where(grouped[status] > 0).astype("Int64").astype(str).replace("<NA>", ""),
@@ -275,10 +276,10 @@ def status_by_stage_figure(df: pd.DataFrame) -> go.Figure:
     fig.update_layout(
         template="plotly_white",
         barmode="stack",
-        title="Status by stage / dossier type",
-        xaxis_title="Stage / Dossier Type",
-        yaxis_title="Dossiers",
-        legend_title="Status",
+        title=t(lang, "figure.status_by_stage.title"),
+        xaxis_title=t(lang, "figure.status_by_stage.x"),
+        yaxis_title=t(lang, "figure.status_by_stage.y"),
+        legend_title=t(lang, "figure.status_by_stage.legend"),
         margin={"l": 12, "r": 12, "t": 64, "b": 26},
         title_x=0.01,
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0.0},
@@ -286,10 +287,10 @@ def status_by_stage_figure(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def status_by_block_figure(df: pd.DataFrame) -> go.Figure:
+def status_by_block_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
     """Stacked bar: dossier counts by building family (PRO / SUE / SHARED)."""
     if df.empty or "bloque" not in df.columns or "estatus" not in df.columns:
-        return empty_figure("Status by building family", "No data available")
+        return empty_figure(t(lang, "figure.status_by_family.title"), t(lang, "figure.no_data"))
 
     work = df.copy()
     work["status"] = _classify_status(work["estatus"])
@@ -309,7 +310,7 @@ def status_by_block_figure(df: pd.DataFrame) -> go.Figure:
     for status in ("approved", "pending", "in_review"):
         fig.add_trace(
             go.Bar(
-                name=_STATUS_LABELS[status],
+                name=_status_label(lang, status),
                 x=grouped.index.tolist(),
                 y=grouped[status],
                 marker_color=_STATUS_COLORS[status],
@@ -320,10 +321,10 @@ def status_by_block_figure(df: pd.DataFrame) -> go.Figure:
     fig.update_layout(
         template="plotly_white",
         barmode="stack",
-        title="Status by building family",
-        xaxis_title="Building Family",
-        yaxis_title="Dossiers",
-        legend_title="Status",
+        title=t(lang, "figure.status_by_family.title"),
+        xaxis_title=t(lang, "figure.status_by_family.x"),
+        yaxis_title=t(lang, "figure.status_by_family.y"),
+        legend_title=t(lang, "figure.status_by_family.legend"),
         margin={"l": 12, "r": 12, "t": 64, "b": 26},
         title_x=0.01,
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0.0},
@@ -331,16 +332,16 @@ def status_by_block_figure(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def weekly_progress_figure(df: pd.DataFrame) -> go.Figure:
+def weekly_progress_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
     """Grouped bar: dossier status counts per target delivery week (hito_semana)."""
     if df.empty or "hito_semana" not in df.columns or "estatus" not in df.columns:
-        return empty_figure("Weekly delivery status", "No data available")
+        return empty_figure(t(lang, "figure.weekly_status.title"), t(lang, "figure.no_data"))
 
     work = df.copy()
     work["status"] = _classify_status(work["estatus"])
     work["semana_num"] = pd.to_numeric(work["hito_semana"], errors="coerce")
     work = work.dropna(subset=["semana_num"])
-    work["semana_label"] = "S" + work["semana_num"].astype(int).astype(str)
+    work["semana_label"] = "W" + work["semana_num"].astype(int).astype(str)
 
     grouped = (
         work.groupby(["semana_label", "status"])
@@ -357,7 +358,7 @@ def weekly_progress_figure(df: pd.DataFrame) -> go.Figure:
     for status in ("approved", "pending", "in_review"):
         fig.add_trace(
             go.Bar(
-                name=_STATUS_LABELS[status],
+                name=_status_label(lang, status),
                 x=grouped.index.astype(str),
                 y=grouped[status],
                 marker_color=_STATUS_COLORS[status],
@@ -368,10 +369,10 @@ def weekly_progress_figure(df: pd.DataFrame) -> go.Figure:
     fig.update_layout(
         template="plotly_white",
         barmode="group",
-        title="Weekly delivery status",
-        xaxis_title="Target Week",
-        yaxis_title="Dossiers",
-        legend_title="Status",
+        title=t(lang, "figure.weekly_status.title"),
+        xaxis_title=t(lang, "figure.weekly_status.x"),
+        yaxis_title=t(lang, "figure.weekly_status.y"),
+        legend_title=t(lang, "figure.weekly_status.legend"),
         margin={"l": 12, "r": 12, "t": 64, "b": 56},
         title_x=0.01,
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0.0},
@@ -380,17 +381,17 @@ def weekly_progress_figure(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def weekly_accumulated_progress_figure(df: pd.DataFrame) -> go.Figure:
+def weekly_accumulated_progress_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
     """Mini S-curve for cumulative released progress vs cumulative total."""
     if df.empty or "hito_semana" not in df.columns or "estatus" not in df.columns:
-        return empty_figure("Cumulative weekly progress", "No data available")
+        return empty_figure(t(lang, "figure.weekly_accum.title"), t(lang, "figure.no_data"))
 
     work = df.copy()
     work["status"] = _classify_status(work["estatus"])
     work["semana_num"] = pd.to_numeric(work["hito_semana"], errors="coerce")
     work = work.dropna(subset=["semana_num"])
     if work.empty:
-        return empty_figure("Cumulative weekly progress", "No valid week data")
+        return empty_figure(t(lang, "figure.weekly_accum.title"), t(lang, "figure.no_week_data"))
 
     grouped = (
         work.groupby("semana_num")
@@ -411,7 +412,7 @@ def weekly_accumulated_progress_figure(df: pd.DataFrame) -> go.Figure:
     fig = go.Figure()
     fig.add_trace(
         go.Scatter(
-            name="Cumulative total",
+            name=t(lang, "figure.series.cum_total"),
             x=weeks,
             y=grouped["cum_total_pct"],
             mode="lines+markers",
@@ -421,7 +422,7 @@ def weekly_accumulated_progress_figure(df: pd.DataFrame) -> go.Figure:
     )
     fig.add_trace(
         go.Scatter(
-            name="Cumulative approved",
+            name=t(lang, "figure.series.cum_approved"),
             x=weeks,
             y=grouped["cum_approved_pct"],
             mode="lines+markers",
@@ -431,22 +432,22 @@ def weekly_accumulated_progress_figure(df: pd.DataFrame) -> go.Figure:
     )
     fig.update_layout(
         template="plotly_white",
-        title="Cumulative weekly progress",
-        xaxis_title="Target Week",
-        yaxis_title="Cumulative progress (%)",
+        title=t(lang, "figure.weekly_accum.title"),
+        xaxis_title=t(lang, "figure.weekly_accum.x"),
+        yaxis_title=t(lang, "figure.weekly_accum.y"),
         yaxis_range=[0, 105],
         margin={"l": 12, "r": 12, "t": 64, "b": 40},
-        legend_title="Series",
+        legend_title=t(lang, "figure.weekly_accum.legend"),
         title_x=0.01,
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0.0},
     )
     return fig
 
 
-def weekly_released_dossiers_figure(payload: Dict[str, Any]) -> go.Figure:
+def weekly_released_dossiers_figure(payload: Dict[str, Any], lang: str = "en") -> go.Figure:
     release_series = _weekly_payload_frame(payload, "release_series")
     if release_series.empty:
-        return empty_figure("Weekly released dossiers", "No weekly release data available")
+        return empty_figure(t(lang, "figure.weekly_released_dossiers.title"), t(lang, "figure.no_weekly_release"))
 
     fig = go.Figure(
         go.Bar(
@@ -459,19 +460,19 @@ def weekly_released_dossiers_figure(payload: Dict[str, Any]) -> go.Figure:
     )
     fig.update_layout(
         template="plotly_white",
-        title="Weekly released dossiers",
-        xaxis_title="Actual release week",
-        yaxis_title="Released dossiers",
+        title=t(lang, "figure.weekly_released_dossiers.title"),
+        xaxis_title=t(lang, "figure.weekly_released_dossiers.x"),
+        yaxis_title=t(lang, "figure.weekly_released_dossiers.y"),
         margin={"l": 12, "r": 12, "t": 64, "b": 48},
         title_x=0.01,
     )
     return fig
 
 
-def weekly_released_weight_figure(payload: Dict[str, Any]) -> go.Figure:
+def weekly_released_weight_figure(payload: Dict[str, Any], lang: str = "en") -> go.Figure:
     release_series = _weekly_payload_frame(payload, "release_series")
     if release_series.empty:
-        return empty_figure("Weekly released weight", "No weekly release data available")
+        return empty_figure(t(lang, "figure.weekly_released_weight.title"), t(lang, "figure.no_weekly_release"))
 
     fig = go.Figure(
         go.Bar(
@@ -484,19 +485,19 @@ def weekly_released_weight_figure(payload: Dict[str, Any]) -> go.Figure:
     )
     fig.update_layout(
         template="plotly_white",
-        title="Weekly released weight",
-        xaxis_title="Actual release week",
-        yaxis_title="Released weight (t)",
+        title=t(lang, "figure.weekly_released_weight.title"),
+        xaxis_title=t(lang, "figure.weekly_released_weight.x"),
+        yaxis_title=t(lang, "figure.weekly_released_weight.y"),
         margin={"l": 12, "r": 12, "t": 64, "b": 48},
         title_x=0.01,
     )
     return fig
 
 
-def cumulative_approved_growth_figure(payload: Dict[str, Any]) -> go.Figure:
+def cumulative_approved_growth_figure(payload: Dict[str, Any], lang: str = "en") -> go.Figure:
     cumulative_series = _weekly_payload_frame(payload, "cumulative_series")
     if cumulative_series.empty:
-        return empty_figure("Cumulative approved growth", "No cumulative release data available")
+        return empty_figure(t(lang, "figure.cum_approved.title"), t(lang, "figure.no_cumulative_release"))
 
     fig = go.Figure(
         go.Scatter(
@@ -505,24 +506,24 @@ def cumulative_approved_growth_figure(payload: Dict[str, Any]) -> go.Figure:
             mode="lines+markers",
             line={"width": 3, "color": _STATUS_COLORS["approved"]},
             marker={"size": 7},
-            name="Cumulative approved",
+            name=t(lang, "figure.series.cum_approved"),
         )
     )
     fig.update_layout(
         template="plotly_white",
-        title="Cumulative approved growth",
-        xaxis_title="Actual release week",
-        yaxis_title="Approved dossiers",
+        title=t(lang, "figure.cum_approved.title"),
+        xaxis_title=t(lang, "figure.cum_approved.x"),
+        yaxis_title=t(lang, "figure.cum_approved.y"),
         margin={"l": 12, "r": 12, "t": 64, "b": 48},
         title_x=0.01,
     )
     return fig
 
 
-def cumulative_released_weight_growth_figure(payload: Dict[str, Any]) -> go.Figure:
+def cumulative_released_weight_growth_figure(payload: Dict[str, Any], lang: str = "en") -> go.Figure:
     cumulative_series = _weekly_payload_frame(payload, "cumulative_series")
     if cumulative_series.empty:
-        return empty_figure("Cumulative released weight growth", "No cumulative release data available")
+        return empty_figure(t(lang, "figure.cum_weight.title"), t(lang, "figure.no_cumulative_release"))
 
     fig = go.Figure(
         go.Scatter(
@@ -531,14 +532,14 @@ def cumulative_released_weight_growth_figure(payload: Dict[str, Any]) -> go.Figu
             mode="lines+markers",
             line={"width": 3, "color": "#0f6cbd"},
             marker={"size": 7},
-            name="Cumulative released weight",
+            name=t(lang, "figure.series.cum_weight"),
         )
     )
     fig.update_layout(
         template="plotly_white",
-        title="Cumulative released weight growth",
-        xaxis_title="Actual release week",
-        yaxis_title="Released weight (t)",
+        title=t(lang, "figure.cum_weight.title"),
+        xaxis_title=t(lang, "figure.cum_weight.x"),
+        yaxis_title=t(lang, "figure.cum_weight.y"),
         margin={"l": 12, "r": 12, "t": 64, "b": 48},
         title_x=0.01,
     )
