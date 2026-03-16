@@ -29,9 +29,20 @@ def crear_backup_automatico(archivo: Path, mantener_ultimos: int = 10) -> Path:
     if not archivo.exists():
         raise FileNotFoundError(f"Archivo no encontrado: {archivo}")
     
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    # Use microsecond precision and a collision guard to avoid overwriting
+    # backups created in the same second during fast operations/tests.
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     backup_name = f"{archivo.stem}_backup_{timestamp}{archivo.suffix}"
     backup_path = archivo.parent / backup_name
+
+    if backup_path.exists():
+        suffix = 1
+        while True:
+            candidate = archivo.parent / f"{archivo.stem}_backup_{timestamp}_{suffix}{archivo.suffix}"
+            if not candidate.exists():
+                backup_path = candidate
+                break
+            suffix += 1
     
     try:
         shutil.copy2(archivo, backup_path)
@@ -40,8 +51,6 @@ def crear_backup_automatico(archivo: Path, mantener_ultimos: int = 10) -> Path:
         
         # Limpiar backups antiguos DESPUÉS de crear el nuevo
         # Esto asegura que el nuevo backup se cuenta en mantener_ultimos
-        import time
-        time.sleep(0.01)  # Pequeña pausa para asegurar timestamps diferentes
         limpiar_backups_antiguos(archivo, mantener_ultimos)
         
         return backup_path
@@ -61,7 +70,7 @@ def limpiar_backups_antiguos(archivo_original: Path, mantener: int = 10):
     patron = f"{archivo_original.stem}_backup_*{archivo_original.suffix}"
     backups = sorted(
         archivo_original.parent.glob(patron),
-        key=lambda p: p.stat().st_mtime,
+        key=lambda p: (p.stat().st_mtime, p.name),
         reverse=True
     )
     
@@ -143,7 +152,7 @@ def listar_backups_disponibles(archivo: Path) -> list[Path]:
     patron = f"{archivo.stem}_backup_*{archivo.suffix}"
     backups = sorted(
         archivo.parent.glob(patron),
-        key=lambda p: p.stat().st_mtime,
+        key=lambda p: (p.stat().st_mtime, p.name),
         reverse=True
     )
     return backups
