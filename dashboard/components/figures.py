@@ -544,3 +544,104 @@ def cumulative_released_weight_growth_figure(payload: Dict[str, Any], lang: str 
         title_x=0.01,
     )
     return fig
+
+
+def _historical_frame(payload: Dict[str, Any]) -> pd.DataFrame:
+    records = payload.get("history_series", []) if payload else []
+    if not records:
+        return pd.DataFrame()
+    frame = pd.DataFrame(records).sort_values("analysis_week").reset_index(drop=True)
+    if "source" not in frame.columns:
+        frame["source"] = "snapshot"
+    return frame
+
+
+def _historical_trend_figure(
+    payload: Dict[str, Any],
+    *,
+    metric: str,
+    title_key: str,
+    x_key: str,
+    y_key: str,
+    color: str,
+    lang: str = "en",
+) -> go.Figure:
+    history = _historical_frame(payload)
+    if history.empty or metric not in history.columns:
+        return empty_figure(t(lang, title_key), t(lang, "figure.no_data"))
+
+    x_values = [f"W{int(value)}" for value in history["analysis_week"]]
+    marker_symbols = ["diamond" if source == "live" else "circle" for source in history["source"]]
+    hover = [
+        f"W{int(week)}<br>{t(lang, 'figure.series.snapshot_live') if source == 'live' else 'Snapshot'}"
+        for week, source in zip(history["analysis_week"], history["source"])
+    ]
+
+    fig = go.Figure(
+        go.Scatter(
+            x=x_values,
+            y=history[metric],
+            mode="lines+markers",
+            line={"width": 3, "color": color},
+            marker={"size": 8, "symbol": marker_symbols, "color": color},
+            hovertext=hover,
+            hovertemplate="%{hovertext}<br>%{y}<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        template="plotly_white",
+        title=t(lang, title_key),
+        xaxis_title=t(lang, x_key),
+        yaxis_title=t(lang, y_key),
+        margin={"l": 12, "r": 12, "t": 64, "b": 48},
+        title_x=0.01,
+    )
+    return fig
+
+
+def snapshot_released_trend_figure(payload: Dict[str, Any], lang: str = "en") -> go.Figure:
+    return _historical_trend_figure(
+        payload,
+        metric="released_this_week",
+        title_key="figure.snapshot_released.title",
+        x_key="figure.snapshot_released.x",
+        y_key="figure.snapshot_released.y",
+        color=_STATUS_COLORS["approved"],
+        lang=lang,
+    )
+
+
+def snapshot_backlog_trend_figure(payload: Dict[str, Any], lang: str = "en") -> go.Figure:
+    return _historical_trend_figure(
+        payload,
+        metric="backlog_dossiers",
+        title_key="figure.snapshot_backlog.title",
+        x_key="figure.snapshot_backlog.x",
+        y_key="figure.snapshot_backlog.y",
+        color="#d99000",
+        lang=lang,
+    )
+
+
+def snapshot_approval_trend_figure(payload: Dict[str, Any], lang: str = "en") -> go.Figure:
+    return _historical_trend_figure(
+        payload,
+        metric="approved_dossiers",
+        title_key="figure.snapshot_approval.title",
+        x_key="figure.snapshot_approval.x",
+        y_key="figure.snapshot_approval.y",
+        color="#2d6fb7",
+        lang=lang,
+    )
+
+
+def snapshot_released_weight_trend_figure(payload: Dict[str, Any], lang: str = "en") -> go.Figure:
+    return _historical_trend_figure(
+        payload,
+        metric="released_weight_t_this_week",
+        title_key="figure.snapshot_weight.title",
+        x_key="figure.snapshot_weight.x",
+        y_key="figure.snapshot_weight.y",
+        color="#0f6cbd",
+        lang=lang,
+    )

@@ -295,6 +295,34 @@ def cmd_prune(args):
         sys.exit(1)
 
 
+def cmd_snapshot_build(args):
+    """Genera o actualiza un snapshot semanal persistente."""
+    print_header("[SNAPSHOT] GENERANDO SNAPSHOT SEMANAL")
+    cmd = [sys.executable, "-m", "scripts.build_weekly_snapshot"]
+    if args.week is not None:
+        cmd.extend(["--week", str(args.week)])
+    if args.force:
+        cmd.append("--force")
+    subprocess.run(cmd, cwd=str(PROJECT_ROOT), check=True)
+
+
+def cmd_audit_kpis(args):
+    """Imprime la auditoria de peso y KPI vigente."""
+    print_header("[AUDIT] AUDITORIA DE PESOS Y KPI")
+    subprocess.run([sys.executable, "-m", "scripts.audit_kpis"], cwd=str(PROJECT_ROOT), check=True)
+
+
+def cmd_inspect_management(args):
+    """Inspecciona payloads de gestion y reporte ejecutivo."""
+    print_header("[PAYLOAD] INSPECCION DE GESTION")
+    cmd = [sys.executable, "-m", "scripts.inspect_management_payload", "--payload", args.payload, "--lang", args.lang]
+    if args.week is not None:
+        cmd.extend(["--week", str(args.week)])
+    if args.comparison_week is not None:
+        cmd.extend(["--comparison-week", str(args.comparison_week)])
+    subprocess.run(cmd, cwd=str(PROJECT_ROOT), check=True)
+
+
 def main():
     """Función principal."""
     parser = argparse.ArgumentParser(
@@ -307,8 +335,11 @@ Ejemplos:
   python cli.py generate S186        # Generar dashboards para S186
   python cli.py validate             # Validar proyecto
   python cli.py status               # Ver estado rápido
-  python cli.py backup               # Crear respaldo
+    python cli.py backup               # Crear respaldo
     python cli.py prune                # Podar caches, historicos y backups antiguos
+    python cli.py snapshot-build       # Persistir snapshot semanal
+    python cli.py audit-kpis           # Auditar KPIs y pesos actuales
+    python cli.py inspect-management   # Ver payloads de gestion / reporte
         """
     )
     
@@ -342,6 +373,24 @@ Ejemplos:
     # Comando: prune
     parser_prune = subparsers.add_parser("prune", help="Poda segura para reducir peso en disco")
     parser_prune.set_defaults(func=cmd_prune)
+
+    # Comando: snapshot-build
+    parser_snapshot = subparsers.add_parser("snapshot-build", help="Genera o actualiza un snapshot semanal persistente")
+    parser_snapshot.add_argument("--week", type=int, default=None, help="Semana de analisis a persistir")
+    parser_snapshot.add_argument("--force", action="store_true", help="Reemplaza el snapshot si ya existe")
+    parser_snapshot.set_defaults(func=cmd_snapshot_build)
+
+    # Comando: audit-kpis
+    parser_audit = subparsers.add_parser("audit-kpis", help="Imprime la auditoria de KPIs y pesos")
+    parser_audit.set_defaults(func=cmd_audit_kpis)
+
+    # Comando: inspect-management
+    parser_inspect = subparsers.add_parser("inspect-management", help="Inspecciona payloads de gestion y reporte")
+    parser_inspect.add_argument("--payload", default="weekly", choices=["weekly", "historical", "executive"], help="Payload a mostrar")
+    parser_inspect.add_argument("--week", type=int, default=None, help="Semana de analisis")
+    parser_inspect.add_argument("--comparison-week", type=int, default=None, help="Semana historica a comparar")
+    parser_inspect.add_argument("--lang", default="en", choices=["en", "es"], help="Idioma para payload ejecutivo")
+    parser_inspect.set_defaults(func=cmd_inspect_management)
     
     args = parser.parse_args()
     

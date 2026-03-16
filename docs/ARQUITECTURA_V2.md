@@ -137,8 +137,8 @@ proyecto_dossier/
 |--------|------|-------------|
 | GET | `/api/health` | Health check |
 | GET | `/api/dossiers` | List all dossiers (paginated, filterable) |
-| GET | `/api/dossiers/{contractor}` | Dossiers for a single contractor |
-| GET | `/api/dossiers/contractors` | Available contractor keys |
+| GET | `/api/dossiers/{contractor}` | Dossiers for the requested contractor key (active flow: BAYSA) |
+| GET | `/api/dossiers/contractors` | Active contractor keys |
 | GET | `/api/metrics` | Global KPIs |
 | GET | `/api/metrics/by-contractor` | KPIs per contractor |
 | GET | `/api/metrics/by-stage` | KPIs per construction stage |

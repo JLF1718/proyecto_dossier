@@ -89,6 +89,27 @@ def overview_page(lang: str = "en") -> dbc.Container:
                         dbc.Card(
                             dbc.CardBody(
                                 [
+                                    html.Label(t(lang, "filter.history_mode"), id="management-history-label", className="qa-subtitle fw-semibold mb-1"),
+                                    dbc.Checklist(
+                                        id="management-history-toggle",
+                                        options=[{"label": t(lang, "history.mode_hint"), "value": "on"}],
+                                        value=[],
+                                        switch=True,
+                                        className="qa-presentation-toggle",
+                                    ),
+                                ]
+                            ),
+                            className="qa-panel qa-control-card h-100",
+                        ),
+                        xs=12,
+                        md=6,
+                        lg=4,
+                        className="mb-2",
+                    ),
+                    dbc.Col(
+                        dbc.Card(
+                            dbc.CardBody(
+                                [
                                     html.Label(t(lang, "lang.selector"), className="qa-subtitle fw-semibold mb-1"),
                                     dcc.Dropdown(
                                         id="language-selector",
@@ -187,6 +208,12 @@ def overview_page(lang: str = "en") -> dbc.Container:
                         "filter-week-label",
                         t(lang, "filter.placeholder", label=week_label.lower()),
                     ),
+                    _filter_dropdown(
+                        t(lang, "filter.compare_week"),
+                        "filter-compare-week",
+                        "filter-compare-week-label",
+                        t(lang, "filter.placeholder", label=t(lang, "filter.compare_week").lower()),
+                    ),
                 ],
                 className="mb-3 qa-filter-row",
             ),
@@ -256,6 +283,57 @@ def overview_page(lang: str = "en") -> dbc.Container:
             ),
             html.Section(
                 [
+                    html.H5(t(lang, "section.historical_comparison"), id="section-historical-comparison", className="qa-section-title mt-1 mb-2"),
+                    html.Div(id="historical-comparison-kpis", className="mb-3 qa-kpi-zone"),
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                dbc.Card(
+                                    dbc.CardBody(dcc.Graph(id="snapshot-release-trend-graph", config=_GRAPH_CONFIG, style={"height": "320px"})),
+                                    className="qa-panel qa-chart-card h-100",
+                                ),
+                                xs=12,
+                                lg=6,
+                                className="mb-3",
+                            ),
+                            dbc.Col(
+                                dbc.Card(
+                                    dbc.CardBody(dcc.Graph(id="snapshot-backlog-trend-graph", config=_GRAPH_CONFIG, style={"height": "320px"})),
+                                    className="qa-panel qa-chart-card h-100",
+                                ),
+                                xs=12,
+                                lg=6,
+                                className="mb-3",
+                            ),
+                        ]
+                    ),
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                dbc.Card(
+                                    dbc.CardBody(dcc.Graph(id="snapshot-approval-trend-graph", config=_GRAPH_CONFIG, style={"height": "320px"})),
+                                    className="qa-panel qa-chart-card h-100",
+                                ),
+                                xs=12,
+                                lg=6,
+                                className="mb-3",
+                            ),
+                            dbc.Col(
+                                dbc.Card(
+                                    dbc.CardBody(dcc.Graph(id="snapshot-weight-trend-graph", config=_GRAPH_CONFIG, style={"height": "320px"})),
+                                    className="qa-panel qa-chart-card h-100",
+                                ),
+                                xs=12,
+                                lg=6,
+                                className="mb-3",
+                            ),
+                        ]
+                    ),
+                ],
+                className="qa-export-section qa-export-section--historical",
+            ),
+            html.Section(
+                [
                     html.H5(t(lang, "section.dossier_analysis"), id="section-dossier-analysis", className="qa-section-title mt-1 mb-2"),
                     dbc.Row(
                         [
@@ -310,6 +388,13 @@ def overview_page(lang: str = "en") -> dbc.Container:
                     html.Div(id="executive-summary-table", className="mb-4"),
                 ],
                 className="qa-export-section qa-export-section--summary",
+            ),
+            html.Section(
+                [
+                    html.H5(t(lang, "section.executive_report_pack"), id="section-executive-report-pack", className="qa-section-title mt-2 mb-2"),
+                    html.Div(id="executive-report-pack", className="mb-4"),
+                ],
+                className="qa-export-section qa-export-section--report",
             ),
             html.Section(
                 [

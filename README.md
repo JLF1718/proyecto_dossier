@@ -74,8 +74,37 @@ Servicios:
 - `GET /api/welds`
 - `GET /api/metrics`
 - `GET /api/ncforms`
+- `GET /api/dossiers/snapshots`
+- `GET /api/dossiers/weekly-management`
+- `GET /api/dossiers/historical-comparison`
+- `GET /api/dossiers/executive-report`
 
 Tambien disponibles: rutas por contratista, metricas por etapa/contratista y `POST /api/ncforms`.
+
+---
+
+## Operacion v0.6
+
+La plataforma puede persistir snapshots semanales del dataset activo `data/processed/baysa_dossiers_clean.csv` en SQLite (`database/qa_platform.db`) para comparaciones historicas reales.
+
+Comandos utiles:
+
+```bash
+make snapshot
+python cli.py snapshot-build --week 194
+python cli.py snapshot-build --week 194 --force
+
+make audit-kpis
+python cli.py audit-kpis
+
+make inspect-management
+python cli.py inspect-management --payload executive --week 194 --comparison-week 193 --lang es
+```
+
+Notas:
+
+- No se crean snapshots duplicados para la misma semana salvo con `--force`.
+- El dashboard sigue leyendo el dataset activo BAYSA y usa los snapshots persistidos solo para comparacion historica y reporte ejecutivo.
 
 ---
 
@@ -173,7 +202,7 @@ docs/                 Documentación canónica
 
 ## Datos y salidas
 
-- CSV activos en `data/contratistas/BAYSA/` y `data/contratistas/JAMAR/`.
+- CSV activo del flujo de dossieres en `data/processed/baysa_dossiers_clean.csv`.
 - Dashboards HTML en `output/dashboards/`.
 - Exportes históricos por semana en `output/historico/`.
 - Poster principal BAYSA (el más reciente) en `output/tablas/` — es el que muestra la web app.

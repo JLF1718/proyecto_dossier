@@ -25,12 +25,17 @@ Contractual rules implemented here:
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
+from hashlib import sha256
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 import pandas as pd
+from sqlalchemy import select
 
 from backend.config import get_settings
+from database.models import WeeklySnapshot
+from database.session import SessionLocal, init_db
 
 log = logging.getLogger(__name__)
 
@@ -69,6 +74,7 @@ _STAGE_ORDER = [
 _FAMILY_ORDER = ["PRO", "SUE", "SHARED"]
 
 _WEIGHT_AUDIT_DELTA_WARNING_KG = 100000.0
+_SNAPSHOT_PAYLOAD_VERSION = "0.6"
 
 
 def _processed_baysa_path() -> Path:
@@ -713,13 +719,18 @@ def _build_kpis(df: pd.DataFrame) -> Dict[str, Any]:
     rejected = distribution["rejected"]
     peso_total_ton = float(weight_audit["displayed_total_weight_t"])
 
-    kpi_weight_column = str(weight_audit.get("kpi_weight_column", "weight_kg"))
     approved_mask = scoped.get("status") == "approved" if "status" in scoped.columns else pd.Series(False, index=scoped.index)
+    documented_release_weight_column = "weight_dossier_kg" if "weight_dossier_kg" in scoped.columns else "weight_kg"
+    block_release_weight_column = str(weight_audit.get("kpi_weight_column", "weight_kg"))
     peso_aprobado_ton = round(
-        float(scoped.loc[approved_mask, kpi_weight_column].sum() / 1000.0), 2
-    ) if not scoped.empty and "status" in scoped.columns and kpi_weight_column in scoped.columns else 0.0
+        float(scoped.loc[approved_mask, documented_release_weight_column].sum() / 1000.0), 2
+    ) if not scoped.empty and "status" in scoped.columns and documented_release_weight_column in scoped.columns else 0.0
+    peso_aprobado_bloque_ton = round(
+        float(scoped.loc[approved_mask, block_release_weight_column].sum() / 1000.0), 2
+    ) if not scoped.empty and "status" in scoped.columns and block_release_weight_column in scoped.columns else 0.0
     pct_approved = round((approved / total_dossiers * 100.0), 2) if total_dossiers else 0.0
     pct_peso_approved = round((peso_aprobado_ton / peso_total_ton * 100.0), 2) if peso_total_ton else 0.0
+    pct_peso_aprobado_bloque = round((peso_aprobado_bloque_ton / peso_total_ton * 100.0), 2) if peso_total_ton else 0.0
 
     return {
         "total_rows": total_rows,
@@ -734,9 +745,12 @@ def _build_kpis(df: pd.DataFrame) -> Dict[str, Any]:
         # Backward-compatible keys still used by existing dashboard widgets.
         "dossiers_liberados": approved,
         "pct_liberado": pct_approved,
+        # Contractual total weight stays block-based; released weight is documented dossier weight.
         "peso_total_ton": peso_total_ton,
         "peso_liberado_ton": peso_aprobado_ton,
         "pct_peso_liberado": pct_peso_approved,
+        "peso_liberado_bloque_ton": peso_aprobado_bloque_ton,
+        "pct_peso_liberado_bloque": pct_peso_aprobado_bloque,
         "weight_audit": weight_audit,
     }
 
@@ -832,10 +846,13 @@ def compute_kpis(df: pd.DataFrame) -> Dict[str, Any]:
         - ``rejected_dossiers``     – status == "rejected" (0 in current BAYSA data)
         - ``rows_in_contract_scope``– same as total_dossiers
         - ``rows_out_of_scope``     – rows excluded from KPIs (N° == "--")
-        - ``total_rows``            – all rows before scope filter
-        - ``status_distribution``   – {approved, pending, in_review, rejected}
-        - Legacy backward-compat keys: ``dossiers_liberados``, ``pct_liberado``,
-          ``peso_total_ton``, ``peso_liberado_ton``, ``pct_peso_liberado``
+                - ``total_rows``            – all rows before scope filter
+                - ``status_distribution``   – {approved, pending, in_review, rejected}
+                - Legacy backward-compat keys: ``dossiers_liberados``, ``pct_liberado``,
+                    ``peso_total_ton`` (contractual block baseline),
+                    ``peso_liberado_ton`` (documented dossier-supported released weight),
+                    ``pct_peso_liberado`` (documented released / contractual total)
+                - Optional clarity keys: ``peso_liberado_bloque_ton``, ``pct_peso_liberado_bloque``
 
     Logs:
         status_distribution with approved/pending/in_review/rejected counts
@@ -872,3 +889,406 @@ def compute_kpis(df: pd.DataFrame) -> Dict[str, Any]:
 def weekly_management_payload(contractor: str = "BAYSA", selected_week: object = None) -> Dict[str, Any]:
     """Return the v0.3 weekly management payload for the active BAYSA dataset."""
     return build_weekly_management_payload(load_dossiers(contractor), selected_week=selected_week)
+
+
+def _build_executive_summary_frame(df: pd.DataFrame) -> pd.DataFrame:
+    columns = [
+        "building_family",
+        "stage_category",
+        "total_dossiers",
+        "approved",
+        "pending",
+        "in_review",
+        "approval_pct",
+        "released_weight_t",
+        "out_of_scope",
+    ]
+    standard_df = _ensure_standardized_frame(df)
+    if standard_df.empty:
+        return pd.DataFrame(columns=columns)
+
+    work = _enrich_management_dimensions(standard_df)
+    work = work[
+        work["stage_category"].isin(_STAGE_ORDER)
+        & work["building_family"].isin(_FAMILY_ORDER)
+    ].copy()
+    if work.empty:
+        return pd.DataFrame(columns=columns)
+
+    in_scope = work.get("in_contract_scope", pd.Series(True, index=work.index)).fillna(True).astype(bool)
+    work["total_dossiers"] = in_scope.astype(int)
+    work["approved"] = (in_scope & work["status"].eq("approved")).astype(int)
+    work["pending"] = (in_scope & work["status"].eq("pending")).astype(int)
+    work["in_review"] = (in_scope & work["status"].eq("in_review")).astype(int)
+    work["released_weight_t"] = (work["weight_kg"].where(in_scope & work["status"].eq("approved"), 0.0) / 1000.0)
+    work["out_of_scope"] = (~in_scope).astype(int)
+    work["building_family"] = pd.Categorical(work["building_family"], categories=_FAMILY_ORDER, ordered=True)
+    work["stage_category"] = pd.Categorical(work["stage_category"], categories=_STAGE_ORDER, ordered=True)
+
+    summary = (
+        work.groupby(["building_family", "stage_category"], observed=True)
+        .agg(
+            total_dossiers=("total_dossiers", "sum"),
+            approved=("approved", "sum"),
+            pending=("pending", "sum"),
+            in_review=("in_review", "sum"),
+            released_weight_t=("released_weight_t", "sum"),
+            out_of_scope=("out_of_scope", "sum"),
+        )
+        .reset_index()
+    )
+    summary["approval_pct"] = (
+        summary["approved"].div(summary["total_dossiers"].where(summary["total_dossiers"] > 0)).fillna(0.0) * 100.0
+    ).round(2)
+    summary["released_weight_t"] = summary["released_weight_t"].round(2)
+    return summary[columns]
+
+
+def _snapshot_label(analysis_week: Optional[int]) -> str:
+    return f"W{int(analysis_week)}" if analysis_week is not None else "W-"
+
+
+def _active_source_hash(path: Optional[Path] = None) -> str:
+    source_path = path or _processed_baysa_path()
+    return sha256(source_path.read_bytes()).hexdigest()
+
+
+def _management_bundle(df: pd.DataFrame, selected_week: object = None) -> Dict[str, Any]:
+    standard_df = _ensure_standardized_frame(df)
+    kpis = compute_kpis(standard_df)
+    weekly_payload = build_weekly_management_payload(standard_df, selected_week=selected_week)
+    executive_summary = _build_executive_summary_frame(standard_df)
+    comparison = weekly_payload.get("weekly_comparison", {}).get("current_vs_previous", {})
+    analysis_week = weekly_payload.get("analysis_week")
+    metrics = {
+        "analysis_week": analysis_week,
+        "snapshot_label": _snapshot_label(analysis_week),
+        "total_dossiers": int(kpis.get("total_dossiers", 0) or 0),
+        "approved_dossiers": int(kpis.get("approved_dossiers", 0) or 0),
+        "backlog_dossiers": int((kpis.get("pending_dossiers", 0) or 0) + (kpis.get("in_review_dossiers", 0) or 0)),
+        "released_this_week": int(weekly_payload.get("delta_kpis", {}).get("released_this_week", 0) or 0),
+        "released_weight_t_this_week": round(float(weekly_payload.get("delta_kpis", {}).get("released_weight_t_this_week", 0.0) or 0.0), 2),
+        "cumulative_approved_dossiers": int(comparison.get("cumulative_approved_current", 0) or 0),
+        "cumulative_released_weight_t": round(float(comparison.get("cumulative_released_weight_t_current", 0.0) or 0.0), 2),
+    }
+    return {
+        "analysis_week": analysis_week,
+        "kpis": kpis,
+        "weekly_payload": weekly_payload,
+        "executive_summary_table": _serialise_weekly_records(executive_summary),
+        "snapshot_metrics": metrics,
+    }
+
+
+def _snapshot_from_model(snapshot: WeeklySnapshot) -> Dict[str, Any]:
+    return {
+        "analysis_week": int(snapshot.analysis_week),
+        "snapshot_label": snapshot.snapshot_label,
+        "source_file": snapshot.source_file,
+        "source_hash": snapshot.source_hash,
+        "source_row_count": int(snapshot.source_row_count or 0),
+        "total_dossiers": int(snapshot.total_dossiers or 0),
+        "approved_dossiers": int(snapshot.approved_dossiers or 0),
+        "backlog_dossiers": int(snapshot.backlog_dossiers or 0),
+        "released_this_week": int(snapshot.released_this_week or 0),
+        "released_weight_t_this_week": round(float(snapshot.released_weight_t_this_week or 0.0), 2),
+        "cumulative_released_weight_t": round(float(snapshot.cumulative_released_weight_t or 0.0), 2),
+        "executive_summary_table": snapshot.executive_summary_json or [],
+        "weekly_payload": snapshot.weekly_payload_json or {},
+        "created_at": snapshot.created_at.isoformat() if snapshot.created_at else None,
+        "updated_at": snapshot.updated_at.isoformat() if snapshot.updated_at else None,
+    }
+
+
+def _comparison_block(current: Dict[str, Any], base: Optional[Dict[str, Any]], key: str) -> Dict[str, Any]:
+    if not base:
+        return {
+            "comparison_key": key,
+            "comparison_week": None,
+            "available": False,
+            "released_dossiers_delta": 0,
+            "released_weight_t_delta": 0.0,
+            "backlog_delta": 0,
+            "approval_delta": 0,
+            "cumulative_released_weight_t_delta": 0.0,
+        }
+
+    return {
+        "comparison_key": key,
+        "comparison_week": int(base.get("analysis_week")) if base.get("analysis_week") is not None else None,
+        "available": True,
+        "released_dossiers_delta": int(current.get("released_this_week", 0) - base.get("released_this_week", 0)),
+        "released_weight_t_delta": round(float(current.get("released_weight_t_this_week", 0.0) - base.get("released_weight_t_this_week", 0.0)), 2),
+        "backlog_delta": int(current.get("backlog_dossiers", 0) - base.get("backlog_dossiers", 0)),
+        "approval_delta": int(current.get("approved_dossiers", 0) - base.get("approved_dossiers", 0)),
+        "cumulative_released_weight_t_delta": round(
+            float(current.get("cumulative_released_weight_t", 0.0) - base.get("cumulative_released_weight_t", 0.0)),
+            2,
+        ),
+        "current": current,
+        "baseline": base,
+    }
+
+
+def _trend_direction(delta: float, *, better_when_positive: bool = True) -> str:
+    if delta == 0:
+        return "stable"
+    if better_when_positive:
+        return "up" if delta > 0 else "down"
+    return "down" if delta > 0 else "up"
+
+
+def _trend_summary(points: list[Dict[str, Any]]) -> Dict[str, Any]:
+    if not points:
+        return {
+            "snapshot_count": 0,
+            "available_weeks": [],
+            "released_dossiers_delta": 0,
+            "released_weight_t_delta": 0.0,
+            "backlog_delta": 0,
+            "approval_delta": 0,
+            "directions": {
+                "released": "stable",
+                "released_weight": "stable",
+                "backlog": "stable",
+                "approval": "stable",
+            },
+        }
+
+    first = points[0]
+    last = points[-1]
+    released_delta = int(last.get("released_this_week", 0) - first.get("released_this_week", 0))
+    released_weight_delta = round(float(last.get("released_weight_t_this_week", 0.0) - first.get("released_weight_t_this_week", 0.0)), 2)
+    backlog_delta = int(last.get("backlog_dossiers", 0) - first.get("backlog_dossiers", 0))
+    approval_delta = int(last.get("approved_dossiers", 0) - first.get("approved_dossiers", 0))
+    return {
+        "snapshot_count": len(points),
+        "available_weeks": [int(point["analysis_week"]) for point in points if point.get("analysis_week") is not None],
+        "released_dossiers_delta": released_delta,
+        "released_weight_t_delta": released_weight_delta,
+        "backlog_delta": backlog_delta,
+        "approval_delta": approval_delta,
+        "directions": {
+            "released": _trend_direction(released_delta, better_when_positive=True),
+            "released_weight": _trend_direction(released_weight_delta, better_when_positive=True),
+            "backlog": _trend_direction(backlog_delta, better_when_positive=False),
+            "approval": _trend_direction(approval_delta, better_when_positive=True),
+        },
+    }
+
+
+def list_weekly_snapshots(
+    session_factory: Callable[[], Any] = SessionLocal,
+) -> list[Dict[str, Any]]:
+    init_db()
+    with session_factory() as session:
+        snapshots = session.scalars(select(WeeklySnapshot).order_by(WeeklySnapshot.analysis_week.asc())).all()
+        return [_snapshot_from_model(snapshot) for snapshot in snapshots]
+
+
+def get_weekly_snapshot(
+    analysis_week: int,
+    session_factory: Callable[[], Any] = SessionLocal,
+) -> Optional[Dict[str, Any]]:
+    init_db()
+    with session_factory() as session:
+        snapshot = session.scalar(select(WeeklySnapshot).where(WeeklySnapshot.analysis_week == int(analysis_week)))
+        return _snapshot_from_model(snapshot) if snapshot is not None else None
+
+
+def build_snapshot_payload(df: Optional[pd.DataFrame] = None, selected_week: object = None) -> Dict[str, Any]:
+    source_df = df if df is not None else load_dossiers("BAYSA")
+    bundle = _management_bundle(source_df, selected_week=selected_week)
+    analysis_week = bundle.get("analysis_week")
+    if analysis_week is None:
+        raise ValueError("Unable to resolve an analysis week from the active BAYSA dataset.")
+
+    source_path = _processed_baysa_path()
+    metrics = bundle["snapshot_metrics"]
+    return {
+        "analysis_week": analysis_week,
+        "snapshot_label": _snapshot_label(analysis_week),
+        "payload_version": _SNAPSHOT_PAYLOAD_VERSION,
+        "source_file": str(source_path),
+        "source_hash": _active_source_hash(source_path),
+        "source_row_count": int(len(_ensure_standardized_frame(source_df))),
+        "kpis": bundle["kpis"],
+        "weekly_payload": bundle["weekly_payload"],
+        "executive_summary_table": bundle["executive_summary_table"],
+        "snapshot_metrics": metrics,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def build_or_update_weekly_snapshot(
+    selected_week: object = None,
+    *,
+    force: bool = False,
+    df: Optional[pd.DataFrame] = None,
+    session_factory: Callable[[], Any] = SessionLocal,
+) -> Dict[str, Any]:
+    init_db()
+    payload = build_snapshot_payload(df=df, selected_week=selected_week)
+    analysis_week = int(payload["analysis_week"])
+    metrics = payload["snapshot_metrics"]
+
+    with session_factory() as session:
+        existing = session.scalar(select(WeeklySnapshot).where(WeeklySnapshot.analysis_week == analysis_week))
+        if existing is not None and not force:
+            raise ValueError(f"Snapshot for week W{analysis_week} already exists. Use force=True to replace it.")
+
+        snapshot = existing or WeeklySnapshot(analysis_week=analysis_week)
+        snapshot.snapshot_label = payload["snapshot_label"]
+        snapshot.source_file = payload["source_file"]
+        snapshot.source_hash = payload["source_hash"]
+        snapshot.source_row_count = int(payload["source_row_count"])
+        snapshot.total_dossiers = int(metrics.get("total_dossiers", 0))
+        snapshot.approved_dossiers = int(metrics.get("approved_dossiers", 0))
+        snapshot.backlog_dossiers = int(metrics.get("backlog_dossiers", 0))
+        snapshot.released_this_week = int(metrics.get("released_this_week", 0))
+        snapshot.released_weight_t_this_week = float(metrics.get("released_weight_t_this_week", 0.0))
+        snapshot.cumulative_released_weight_t = float(metrics.get("cumulative_released_weight_t", 0.0))
+        snapshot.executive_summary_json = payload["executive_summary_table"]
+        snapshot.weekly_payload_json = payload["weekly_payload"]
+        session.add(snapshot)
+        session.commit()
+        session.refresh(snapshot)
+
+    result = _snapshot_from_model(snapshot)
+    result["created"] = existing is None
+    result["forced"] = bool(force)
+    return result
+
+
+def build_historical_comparison_payload(
+    df: Optional[pd.DataFrame] = None,
+    *,
+    selected_week: object = None,
+    comparison_week: object = None,
+    session_factory: Callable[[], Any] = SessionLocal,
+) -> Dict[str, Any]:
+    live_bundle = _management_bundle(df if df is not None else load_dossiers("BAYSA"), selected_week=selected_week)
+    current_metrics = live_bundle["snapshot_metrics"]
+    analysis_week = current_metrics.get("analysis_week")
+    comparison_week_value = _normalise_week_value(comparison_week)
+
+    snapshots = list_weekly_snapshots(session_factory=session_factory)
+    snapshot_lookup = {int(snapshot["analysis_week"]): snapshot for snapshot in snapshots if snapshot.get("analysis_week") is not None}
+    previous_snapshot = None
+    if analysis_week is not None:
+        previous_candidates = [week for week in snapshot_lookup if week < int(analysis_week)]
+        if previous_candidates:
+            previous_snapshot = snapshot_lookup[max(previous_candidates)]
+
+    selected_snapshot = None
+    if comparison_week_value is not None:
+        selected_snapshot = snapshot_lookup.get(int(comparison_week_value))
+
+    history_points = [
+        {
+            "analysis_week": int(snapshot["analysis_week"]),
+            "snapshot_label": snapshot["snapshot_label"],
+            "released_this_week": int(snapshot.get("released_this_week", 0)),
+            "released_weight_t_this_week": round(float(snapshot.get("released_weight_t_this_week", 0.0)), 2),
+            "backlog_dossiers": int(snapshot.get("backlog_dossiers", 0)),
+            "approved_dossiers": int(snapshot.get("approved_dossiers", 0)),
+            "cumulative_released_weight_t": round(float(snapshot.get("cumulative_released_weight_t", 0.0)), 2),
+            "source": "snapshot",
+        }
+        for snapshot in snapshots
+    ]
+
+    if analysis_week is not None and int(analysis_week) not in {point["analysis_week"] for point in history_points}:
+        history_points.append({**current_metrics, "source": "live"})
+        history_points = sorted(history_points, key=lambda item: int(item["analysis_week"]))
+
+    return {
+        "analysis_week": analysis_week,
+        "comparison_week": comparison_week_value,
+        "available_weeks": [point["analysis_week"] for point in history_points],
+        "current_metrics": current_metrics,
+        "current_vs_previous": _comparison_block(current_metrics, previous_snapshot, "previous"),
+        "current_vs_selected": _comparison_block(current_metrics, selected_snapshot, "selected"),
+        "history_series": history_points,
+        "trend_summary": _trend_summary(history_points),
+        "snapshot_status": {
+            "snapshot_count": len(snapshots),
+            "latest_snapshot_week": snapshots[-1]["analysis_week"] if snapshots else None,
+            "current_week_snapshot_exists": bool(analysis_week is not None and int(analysis_week) in snapshot_lookup),
+            "comparison_snapshot_exists": bool(comparison_week_value is not None and int(comparison_week_value) in snapshot_lookup),
+        },
+        "selected_snapshot_summary_table": selected_snapshot.get("executive_summary_table", []) if selected_snapshot else [],
+    }
+
+
+def build_executive_report_payload(
+    df: Optional[pd.DataFrame] = None,
+    *,
+    selected_week: object = None,
+    comparison_week: object = None,
+    language: str = "en",
+    session_factory: Callable[[], Any] = SessionLocal,
+) -> Dict[str, Any]:
+    source_df = df if df is not None else load_dossiers("BAYSA")
+    bundle = _management_bundle(source_df, selected_week=selected_week)
+    historical = build_historical_comparison_payload(
+        source_df,
+        selected_week=selected_week,
+        comparison_week=comparison_week,
+        session_factory=session_factory,
+    )
+    weekly_payload = bundle["weekly_payload"]
+    backlog_groups = weekly_payload.get("backlog_aging_summary", {}).get("groups", [])
+    stagnant_groups = weekly_payload.get("stagnant_groups_summary", {}).get("groups", [])
+    highlights = [
+        {
+            "label": "released_this_week",
+            "value": int(weekly_payload.get("delta_kpis", {}).get("released_this_week", 0) or 0),
+            "delta": int(historical.get("current_vs_previous", {}).get("released_dossiers_delta", 0) or 0),
+        },
+        {
+            "label": "released_weight_t_this_week",
+            "value": round(float(weekly_payload.get("delta_kpis", {}).get("released_weight_t_this_week", 0.0) or 0.0), 2),
+            "delta": round(float(historical.get("current_vs_previous", {}).get("released_weight_t_delta", 0.0) or 0.0), 2),
+        },
+        {
+            "label": "open_backlog",
+            "value": int(weekly_payload.get("backlog_aging_summary", {}).get("total_open_backlog", 0) or 0),
+            "delta": int(historical.get("current_vs_previous", {}).get("backlog_delta", 0) or 0),
+        },
+        {
+            "label": "approved_dossiers",
+            "value": int(bundle["kpis"].get("approved_dossiers", 0) or 0),
+            "delta": int(historical.get("current_vs_previous", {}).get("approval_delta", 0) or 0),
+        },
+    ]
+    return {
+        "report_meta": {
+            "language": language,
+            "analysis_week": bundle.get("analysis_week"),
+            "comparison_week": _normalise_week_value(comparison_week),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "source": "data/processed/baysa_dossiers_clean.csv",
+            "snapshot_status": historical.get("snapshot_status", {}),
+        },
+        "executive_kpis": bundle["kpis"],
+        "weekly_management": weekly_payload,
+        "historical_comparison": historical,
+        "weekly_highlights": highlights,
+        "top_backlog_risks": backlog_groups[:5],
+        "top_stagnant_groups": stagnant_groups[:5],
+        "executive_summary_table": bundle["executive_summary_table"],
+    }
+
+
+def build_weight_kpi_audit_payload(df: Optional[pd.DataFrame] = None) -> Dict[str, Any]:
+    source_df = df if df is not None else load_dossiers("BAYSA")
+    kpis = compute_kpis(source_df)
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "source": "data/processed/baysa_dossiers_clean.csv",
+        "released_weight_policy": "documented dossier-supported approved weight",
+        "total_weight_policy": "contractual in-scope block baseline weight",
+        "weight_audit": kpis.get("weight_audit", {}),
+        "kpis": kpis,
+    }

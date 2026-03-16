@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────
 #  Makefile — QA Platform development tasks
 # ─────────────────────────────────────────────────────────────
-.PHONY: help install dev api dash db-init test lint clean
+.PHONY: help install dev api dash db-init test lint clean snapshot audit-kpis inspect-management
 
 PYTHON ?= python3
 PIP    ?= pip3
@@ -15,6 +15,9 @@ help:
 	@echo "  make api       Start FastAPI only (port 8000)"
 	@echo "  make dash      Start Dash only (port 8050)"
 	@echo "  make db-init   Initialise SQLite database tables"
+	@echo "  make snapshot  Build/update a persisted weekly snapshot"
+	@echo "  make audit-kpis  Print current KPI/weight audit payload"
+	@echo "  make inspect-management  Print weekly management payload"
 	@echo "  make test      Run pytest suite"
 	@echo "  make lint      Run ruff linter"
 	@echo "  make clean     Remove __pycache__ and .pyc files"
@@ -34,6 +37,15 @@ dash:
 
 db-init:
 	$(PYTHON) -c "from database.session import init_db; init_db(); print('DB initialised.')"
+
+snapshot:
+	$(PYTHON) -m scripts.build_weekly_snapshot
+
+audit-kpis:
+	$(PYTHON) -m scripts.audit_kpis
+
+inspect-management:
+	$(PYTHON) -m scripts.inspect_management_payload --payload weekly
 
 test:
 	pytest tests/ -v --tb=short
