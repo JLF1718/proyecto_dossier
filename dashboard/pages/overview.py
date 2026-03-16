@@ -272,6 +272,13 @@ def overview_page(lang: str = "en") -> dbc.Container:
                             ),
                         ]
                     ),
+                ],
+                className="qa-export-section qa-export-section--weekly",
+            ),
+            html.Section(
+                [
+                    html.H5(t(lang, "section.risk_exceptions"), id="section-risk-exceptions", className="qa-section-title mt-1 mb-2"),
+                    html.Div(id="risk-exception-kpis", className="mb-3 qa-kpi-zone"),
                     dbc.Row(
                         [
                             dbc.Col(html.Div(id="backlog-aging-summary", className="mb-3"), xs=12, lg=6),
@@ -279,7 +286,7 @@ def overview_page(lang: str = "en") -> dbc.Container:
                         ]
                     ),
                 ],
-                className="qa-export-section qa-export-section--weekly",
+                className="qa-export-section qa-export-section--risk",
             ),
             html.Section(
                 [
@@ -384,17 +391,17 @@ def overview_page(lang: str = "en") -> dbc.Container:
             ),
             html.Section(
                 [
-                    html.H5(t(lang, "section.executive_summary"), id="section-executive-summary", className="qa-section-title mt-2 mb-2"),
-                    html.Div(id="executive-summary-table", className="mb-4"),
-                ],
-                className="qa-export-section qa-export-section--summary",
-            ),
-            html.Section(
-                [
                     html.H5(t(lang, "section.executive_report_pack"), id="section-executive-report-pack", className="qa-section-title mt-2 mb-2"),
                     html.Div(id="executive-report-pack", className="mb-4"),
                 ],
                 className="qa-export-section qa-export-section--report",
+            ),
+            html.Section(
+                [
+                    html.H5(t(lang, "section.executive_summary"), id="section-executive-summary", className="qa-section-title mt-2 mb-2"),
+                    html.Div(id="executive-summary-table", className="mb-4"),
+                ],
+                className="qa-export-section qa-export-section--summary",
             ),
             html.Section(
                 [

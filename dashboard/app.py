@@ -35,6 +35,7 @@ from dashboard.components.cards import (
     executive_summary_table,
     historical_comparison_cards,
     quality_cards,
+    risk_exception_cards,
     stagnant_groups_summary,
     weekly_management_cards,
 )
@@ -168,6 +169,7 @@ def update_language_store(language_value: Optional[str]) -> Dict[str, str]:
     Output("export-banner-subtitle", "children"),
     Output("section-executive-overview", "children"),
     Output("section-weekly-management", "children"),
+    Output("section-risk-exceptions", "children"),
     Output("section-historical-comparison", "children"),
     Output("section-dossier-analysis", "children"),
     Output("section-executive-summary", "children"),
@@ -209,6 +211,7 @@ def update_static_labels(language_store: Optional[Dict[str, str]]):
         t(lang, "export.banner.subtitle"),
         t(lang, "section.executive_overview"),
         t(lang, "section.weekly_management"),
+        t(lang, "section.risk_exceptions"),
         t(lang, "section.historical_comparison"),
         t(lang, "section.dossier_analysis"),
         t(lang, "section.executive_summary"),
@@ -269,6 +272,7 @@ def update_presentation_mode(toggle_value: Optional[list[str]]) -> str:
     Output("filter-compare-week", "options"),
     Output("executive-kpis", "children"),
     Output("weekly-management-kpis", "children"),
+    Output("risk-exception-kpis", "children"),
     Output("historical-comparison-kpis", "children"),
     Output("quality-kpis", "children"),
     Output("weekly-release-count-graph", "figure"),
@@ -391,6 +395,7 @@ def update_dashboard(
         snapshot_options,
         executive_cards(kpi_payload, lang=lang),
         weekly_management_cards(weekly_payload, lang=lang),
+        risk_exception_cards(weekly_payload, lang=lang),
         historical_comparison_cards(historical_payload, lang=lang),
         quality_cards(kpi_payload, lang=lang),
         weekly_released_dossiers_figure(weekly_payload, lang=lang),
@@ -665,6 +670,9 @@ app.index_string = """
                 break-inside: avoid;
                 page-break-inside: avoid;
             }
+            .qa-export-section--secondary {
+                opacity: .84;
+            }
             .qa-export-ready {
                 background: #f5f8fb;
             }
@@ -781,10 +789,11 @@ app.index_string = """
                     display: none !important;
                 }
                 .qa-export-section--weekly,
+                .qa-export-section--risk,
                 .qa-export-section--historical,
                 .qa-export-section--analysis,
-                .qa-export-section--summary,
-                .qa-export-section--report {
+                .qa-export-section--report,
+                .qa-export-section--summary {
                     break-before: page;
                     page-break-before: always;
                 }

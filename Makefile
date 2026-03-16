@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────
 #  Makefile — QA Platform development tasks
 # ─────────────────────────────────────────────────────────────
-.PHONY: help install dev api dash db-init test lint clean snapshot audit-kpis inspect-management
+.PHONY: help install dev api dash db-init test lint clean snapshot audit-kpis inspect-management smoke qa-start qa-stop
 
 PYTHON ?= python3
 PIP    ?= pip3
@@ -18,6 +18,9 @@ help:
 	@echo "  make snapshot  Build/update a persisted weekly snapshot"
 	@echo "  make audit-kpis  Print current KPI/weight audit payload"
 	@echo "  make inspect-management  Print weekly management payload"
+	@echo "  make smoke     Run compact release smoke validation"
+	@echo "  make qa-start  Start backend + dashboard with health checks"
+	@echo "  make qa-stop   Stop backend + dashboard processes"
 	@echo "  make test      Run pytest suite"
 	@echo "  make lint      Run ruff linter"
 	@echo "  make clean     Remove __pycache__ and .pyc files"
@@ -46,6 +49,15 @@ audit-kpis:
 
 inspect-management:
 	$(PYTHON) -m scripts.inspect_management_payload --payload weekly
+
+smoke:
+	$(PYTHON) -m scripts.smoke_validate_release
+
+qa-start:
+	bash run_qa_platform.sh
+
+qa-stop:
+	bash stop_qa_platform.sh
 
 test:
 	pytest tests/ -v --tb=short

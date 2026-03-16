@@ -55,5 +55,11 @@ desktop.ini
 *.log
 logs/
 
+# =========================
+# SQLite runtime artifacts
+# =========================
+*.db-shm
+*.db-wal
+
 config.yaml
 .runtime/

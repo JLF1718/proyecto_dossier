@@ -451,6 +451,155 @@ def _serialise_weekly_records(df: pd.DataFrame) -> list[Dict[str, Any]]:
     return clean.to_dict(orient="records")
 
 
+def _build_risk_exception_summary(
+    *,
+    frame: pd.DataFrame,
+    analysis_week: Optional[int],
+    backlog_aging: pd.DataFrame,
+    stagnant_groups: pd.DataFrame,
+) -> Dict[str, Any]:
+    scoped = _filter_kpi_scope(_enrich_management_dimensions(frame))
+    if scoped.empty:
+        return {
+            "analysis_week": analysis_week,
+            "signals": [],
+            "oldest_backlog_groups": [],
+            "largest_backlog_groups": [],
+            "stagnant_groups": [],
+            "largest_approval_gaps": [],
+        }
+
+    approval_gaps = _build_executive_summary_frame(scoped)
+    if approval_gaps.empty:
+        gap_records: list[Dict[str, Any]] = []
+    else:
+        gap_frame = approval_gaps.copy()
+        gap_frame["open_backlog"] = (gap_frame["pending"] + gap_frame["in_review"]).astype(int)
+        gap_frame["approval_gap"] = (gap_frame["total_dossiers"] - gap_frame["approved"]).astype(int)
+        gap_frame = gap_frame[gap_frame["approval_gap"] > 0].copy()
+        gap_frame = gap_frame.sort_values(
+            ["approval_gap", "open_backlog", "stage_category", "building_family"],
+            ascending=[False, False, True, True],
+        )
+        gap_records = _serialise_weekly_records(
+            gap_frame[
+                [
+                    "stage_category",
+                    "building_family",
+                    "total_dossiers",
+                    "approved",
+                    "open_backlog",
+                    "approval_gap",
+                    "approval_pct",
+                ]
+            ].head(5)
+        )
+
+    oldest = backlog_aging.sort_values(
+        ["max_age_weeks", "open_backlog"],
+        ascending=[False, False],
+        na_position="last",
+    ).head(5)
+    largest = backlog_aging.sort_values(
+        ["open_backlog", "max_age_weeks"],
+        ascending=[False, False],
+        na_position="last",
+    ).head(5)
+
+    max_age = int(backlog_aging["max_age_weeks"].dropna().max()) if not backlog_aging.empty and backlog_aging["max_age_weeks"].notna().any() else 0
+    stale_groups = int(len(stagnant_groups)) if not stagnant_groups.empty else 0
+    stale_backlog = int(stagnant_groups["open_backlog"].sum()) if not stagnant_groups.empty else 0
+    largest_open_backlog = int(backlog_aging["open_backlog"].max()) if not backlog_aging.empty else 0
+    largest_gap = int(gap_records[0]["approval_gap"]) if gap_records else 0
+
+    return {
+        "analysis_week": analysis_week,
+        "signals": [
+            {
+                "key": "oldest_backlog_age",
+                "value": max_age,
+                "context": "weeks",
+            },
+            {
+                "key": "stagnant_groups",
+                "value": stale_groups,
+                "context": "groups",
+            },
+            {
+                "key": "stagnant_backlog",
+                "value": stale_backlog,
+                "context": "dossiers",
+            },
+            {
+                "key": "largest_open_backlog",
+                "value": largest_open_backlog,
+                "context": "dossiers",
+            },
+            {
+                "key": "largest_approval_gap",
+                "value": largest_gap,
+                "context": "dossiers",
+            },
+        ],
+        "oldest_backlog_groups": _serialise_weekly_records(oldest),
+        "largest_backlog_groups": _serialise_weekly_records(largest),
+        "stagnant_groups": _serialise_weekly_records(stagnant_groups.head(5)),
+        "largest_approval_gaps": gap_records,
+    }
+
+
+def _build_high_value_insights(
+    *,
+    weekly_payload: Dict[str, Any],
+    executive_summary_table: list[Dict[str, Any]],
+) -> list[Dict[str, Any]]:
+    insights: list[Dict[str, Any]] = []
+
+    risk = weekly_payload.get("risk_exception_summary", {})
+    largest_backlog = (risk.get("largest_backlog_groups") or [{}])[0]
+    if largest_backlog:
+        insights.append(
+            {
+                "key": "backlog_concentration",
+                "stage_category": largest_backlog.get("stage_category"),
+                "building_family": largest_backlog.get("building_family"),
+                "value": int(largest_backlog.get("open_backlog") or 0),
+            }
+        )
+
+    stagnant = (risk.get("stagnant_groups") or [{}])[0]
+    if stagnant:
+        insights.append(
+            {
+                "key": "stagnation_hotspot",
+                "stage_category": stagnant.get("stage_category"),
+                "building_family": stagnant.get("building_family"),
+                "value": int(stagnant.get("open_backlog") or 0),
+            }
+        )
+
+    if executive_summary_table:
+        frame = pd.DataFrame(executive_summary_table)
+        if {"building_family", "released_weight_t"}.issubset(frame.columns):
+            by_family = (
+                frame.groupby("building_family", dropna=False)["released_weight_t"]
+                .sum()
+                .sort_values(ascending=False)
+            )
+            if not by_family.empty:
+                family = str(by_family.index[0])
+                value = round(float(by_family.iloc[0]), 2)
+                insights.append(
+                    {
+                        "key": "released_weight_concentration",
+                        "building_family": family,
+                        "value": value,
+                    }
+                )
+
+    return insights[:3]
+
+
 def _ensure_standardized_frame(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df.copy()
@@ -516,6 +665,12 @@ def build_weekly_management_payload(df: pd.DataFrame, selected_week: object = No
             max_age_weeks = int(valid_ages.max())
 
     stagnant_open_backlog = int(stagnant_groups["open_backlog"].sum()) if not stagnant_groups.empty else 0
+    risk_summary = _build_risk_exception_summary(
+        frame=df,
+        analysis_week=analysis_week,
+        backlog_aging=backlog_aging,
+        stagnant_groups=stagnant_groups,
+    )
 
     return {
         "analysis_week": analysis_week,
@@ -559,6 +714,7 @@ def build_weekly_management_payload(df: pd.DataFrame, selected_week: object = No
             "total_open_backlog": stagnant_open_backlog,
             "groups": _serialise_weekly_records(stagnant_groups),
         },
+        "risk_exception_summary": risk_summary,
     }
 
 
@@ -1262,6 +1418,10 @@ def build_executive_report_payload(
             "delta": int(historical.get("current_vs_previous", {}).get("approval_delta", 0) or 0),
         },
     ]
+    high_value_insights = _build_high_value_insights(
+        weekly_payload=weekly_payload,
+        executive_summary_table=bundle["executive_summary_table"],
+    )
     return {
         "report_meta": {
             "language": language,
@@ -1277,6 +1437,8 @@ def build_executive_report_payload(
         "weekly_highlights": highlights,
         "top_backlog_risks": backlog_groups[:5],
         "top_stagnant_groups": stagnant_groups[:5],
+        "risk_exception_summary": weekly_payload.get("risk_exception_summary", {}),
+        "high_value_insights": high_value_insights,
         "executive_summary_table": bundle["executive_summary_table"],
     }
 

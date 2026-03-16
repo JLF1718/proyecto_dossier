@@ -138,9 +138,10 @@ def dossier_kpis() -> Dict[str, Any]:
 
     Canonical status values:
         - ``approved``   – LIBERADO
-        - ``pending``    – OBSERVADO / ATENCIÓN COMENTARIOS / FUERA DE ALCANCE
+        - ``pending``    – OBSERVADO / ATENCIÓN COMENTARIOS
         - ``in_review``  – REVISIÓN INPROS (internal review, not a rejection)
         - ``rejected``   – explicit rejection (not present in current BAYSA data)
+        - ``out_of_scope`` rows are retained for traceability but excluded from KPI counts
     """
     try:
         from backend.services.dossier_service import load_dossiers, compute_kpis
