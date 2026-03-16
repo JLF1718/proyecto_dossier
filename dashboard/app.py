@@ -14,149 +14,140 @@ from typing import Any, Dict, Optional
 import dash
 import dash_bootstrap_components as dbc
 import pandas as pd
-import requests
 from dash import Input, Output
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from dashboard.components.cards import executive_cards, quality_cards
-from dashboard.components.figures import empty_figure, progress_figure, welding_figure
+from dashboard.components.cards import executive_cards, executive_summary_table, quality_cards
+from dashboard.components.figures import (
+    derive_building_family,
+    derive_stage_category,
+    executive_summary_frame,
+    status_by_block_figure,
+    status_by_stage_figure,
+    weekly_accumulated_progress_figure,
+    weekly_progress_figure,
+)
 from dashboard.layout import create_layout
 
-API_BASE_URL = os.getenv("QA_API_BASE_URL", os.getenv("QA_API_BASE", "http://127.0.0.1:8000"))
-API_ACCESS_KEY = os.getenv("API_ACCESS_KEY", "").strip()
-REQUEST_TIMEOUT = float(os.getenv("QA_API_TIMEOUT", "8"))
+_PROCESSED_CSV_PATH = _PROJECT_ROOT / "data" / "processed" / "baysa_dossiers_clean.csv"
+
+_APPROVED = {"approved", "liberado", "aprobado", "aceptado"}
+_IN_REVIEW = {
+    "in_review",
+    "in review",
+    "en_revisión",
+    "en revisión",
+    "revisión inpros",
+    "en revision inpros",
+    "en_revision_inpros",
+}
+
+_STAGE_FILTER_ORDER = [
+    "Stage 1",
+    "Stage 2",
+    "Stage 3",
+    "Stage 4",
+    "General Information",
+    "Protective Coatings",
+]
 
 
-def _api_headers() -> Dict[str, str]:
-    if not API_ACCESS_KEY:
-        return {}
-    return {"X-Access-Key": API_ACCESS_KEY}
+def _classify_status(series: pd.Series) -> pd.Series:
+    def _map(v: str) -> str:
+        text = str(v).strip().lower().replace("_", " ")
+        if text in _APPROVED:
+            return "approved"
+        if text in _IN_REVIEW:
+            return "in_review"
+        return "pending"
+
+    return series.fillna("pending").astype(str).apply(_map)
 
 
-def _fetch_dossiers(contractor: Optional[str], week: Optional[str]) -> pd.DataFrame:
-    params: Dict[str, Any] = {"limit": 5000, "skip": 0}
-    if contractor:
-        params["contratista"] = contractor
-    if week:
-        params["entrega"] = week
-
-    response = requests.get(
-        f"{API_BASE_URL}/api/dossiers",
-        params=params,
-        headers=_api_headers(),
-        timeout=REQUEST_TIMEOUT,
-    )
-    response.raise_for_status()
-    payload = response.json()
-    return pd.DataFrame(payload.get("items", []))
-
-
-def _fetch_weld_metrics(contractor: Optional[str]) -> Dict[str, Any]:
-    params: Dict[str, Any] = {}
-    if contractor:
-        params["contratista"] = contractor
-
-    response = requests.get(
-        f"{API_BASE_URL}/api/welds/metrics",
-        params=params,
-        headers=_api_headers(),
-        timeout=REQUEST_TIMEOUT,
-    )
-    response.raise_for_status()
-    data = response.json()
-    if "message" in data:
-        return {}
-    return data
-
-
-def _fetch_dossier_kpis() -> Dict[str, Any]:
-    """Fetch contractual KPI counts from ``/api/dossiers/kpis``.
-
-    Falls back to computing locally from the processed CSV when the backend is
-    unavailable, so the dashboard remains functional during standalone runs.
-    """
+def _load_local_dossier_csv() -> pd.DataFrame:
+    """Load processed BAYSA CSV keeping all rows for KPI split calculations."""
     try:
-        resp = requests.get(
-            f"{API_BASE_URL}/api/dossiers/kpis",
-            headers=_api_headers(),
-            timeout=REQUEST_TIMEOUT,
-        )
-        resp.raise_for_status()
-        return _normalize_kpi_payload(resp.json())
+        df = pd.read_csv(_PROCESSED_CSV_PATH)
+        return df
     except Exception:
-        from backend.services.dossier_service import compute_kpis, load_dossiers
-
-        return _normalize_kpi_payload(compute_kpis(load_dossiers("BAYSA")))
+        return pd.DataFrame()
 
 
-def _normalize_kpi_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Normalize KPI payload to the canonical dashboard schema.
-
-    Expected keys:
-        total_dossiers, approved_dossiers, pending_dossiers, in_review_dossiers
-    """
-    if not isinstance(payload, dict):
-        payload = {}
-
-    normalized = dict(payload)
-    normalized["total_dossiers"] = int(payload.get("total_dossiers", payload.get("total", 0)) or 0)
-    normalized["approved_dossiers"] = int(payload.get("approved_dossiers", payload.get("approved", 0)) or 0)
-    normalized["pending_dossiers"] = int(payload.get("pending_dossiers", payload.get("pending", 0)) or 0)
-    normalized["in_review_dossiers"] = int(payload.get("in_review_dossiers", payload.get("in_review", 0)) or 0)
-    normalized["rejected_dossiers"] = int(payload.get("rejected_dossiers", payload.get("rejected", 0)) or 0)
-    return normalized
+def _in_scope(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+    if "in_contract_scope" not in df.columns:
+        return df
+    return df[df["in_contract_scope"].astype(str).str.lower().isin(["true", "1", "yes"])]
 
 
-def _status_metrics(df: pd.DataFrame) -> Dict[str, int]:
-    if df.empty or "ESTATUS" not in df.columns:
-        return {"total": 0, "pending": 0, "rejected": 0, "approved": 0}
+def _compute_kpis(all_rows_df: pd.DataFrame) -> Dict[str, Any]:
+    in_scope = _in_scope(all_rows_df)
+    status = _classify_status(in_scope.get("estatus", pd.Series(index=in_scope.index, dtype=object)))
+    total = int(len(in_scope))
+    approved = int((status == "approved").sum())
+    pending = int((status == "pending").sum())
+    in_review = int((status == "in_review").sum())
+    out_of_scope = int(max(len(all_rows_df) - total, 0))
 
-    series = df["ESTATUS"].fillna("").astype(str).str.upper().str.strip()
-    approved = int(series.isin(["LIBERADO", "APROBADO", "ACEPTADO"]).sum())
-    rejected = int(series.isin(["OBSERVADO", "RECHAZADO"]).sum())
-    pending = int(series.isin(["PLANEADO", "EN_REVISIÓN", "EN REVISION", "PENDIENTE"]).sum())
+    weights = pd.to_numeric(in_scope.get("peso_dossier_kg", 0), errors="coerce").fillna(0.0)
+    released_weights = weights[status == "approved"]
+    peso_total_ton = float(weights.sum() / 1000.0)
+    peso_liberado_ton = float(released_weights.sum() / 1000.0)
 
-    # Unknown statuses are counted as pending to avoid dropping data.
-    other = len(series) - approved - rejected - pending
-    pending += max(other, 0)
+    pct_liberado = (approved / total * 100.0) if total else 0.0
+    pct_peso_liberado = (peso_liberado_ton / peso_total_ton * 100.0) if peso_total_ton else 0.0
 
     return {
-        "total": int(len(series)),
-        "pending": pending,
-        "rejected": rejected,
-        "approved": approved,
+        "total_dossiers": total,
+        "approved_dossiers": approved,
+        "pending_dossiers": pending,
+        "in_review_dossiers": in_review,
+        "rejected_dossiers": 0,
+        "rows_out_of_scope": out_of_scope,
+        "pct_liberado": round(pct_liberado, 1),
+        "peso_total_ton": round(peso_total_ton, 2),
+        "peso_liberado_ton": round(peso_liberado_ton, 2),
+        "pct_peso_liberado": round(pct_peso_liberado, 1),
     }
 
 
-def _safe_options(df: pd.DataFrame, columns: list[str]) -> list[dict[str, str]]:
-    for col in columns:
-        if col in df.columns:
-            values = sorted(v for v in df[col].dropna().astype(str).unique() if v.strip())
-            return [{"label": v, "value": v} for v in values]
-    return []
-
-
-def _apply_local_filters(
+def _apply_local_csv_filters(
     df: pd.DataFrame,
+    contractor: Optional[str],
     discipline: Optional[str],
     system: Optional[str],
+    week: Optional[str],
+    *,
+    include_out_of_scope: bool = False,
 ) -> pd.DataFrame:
+    """Apply dashboard filters to processed CSV rows."""
     if df.empty:
         return df
-
     out = df.copy()
+
+    if not include_out_of_scope:
+        out = _in_scope(out)
+
+    if contractor and "contractor" in out.columns:
+        out = out[out["contractor"].astype(str).str.upper() == contractor.strip().upper()]
+
+    out["stage_category"] = derive_stage_category(out)
+    out["building_family"] = derive_building_family(out)
+
     if discipline:
-        if "DISCIPLINA" in out.columns:
-            out = out[out["DISCIPLINA"].astype(str) == discipline]
-        elif "ETAPA" in out.columns:
-            out = out[out["ETAPA"].astype(str) == discipline]
-
-    if system and "SISTEMA" in out.columns:
-        out = out[out["SISTEMA"].astype(str) == system]
-
+        out = out[out["stage_category"] == discipline]
+    if system:
+        out = out[out["building_family"] == system]
+    if week and "hito_semana" in out.columns:
+        try:
+            week_num = float(week)
+            out = out[pd.to_numeric(out["hito_semana"], errors="coerce") == week_num]
+        except (ValueError, TypeError):
+            pass
     return out
 
 
@@ -177,8 +168,11 @@ app.layout = create_layout()
     Output("filter-week", "options"),
     Output("executive-kpis", "children"),
     Output("quality-kpis", "children"),
-    Output("progress-graph", "figure"),
-    Output("welding-graph", "figure"),
+    Output("stage-status-graph", "figure"),
+    Output("block-status-graph", "figure"),
+    Output("weekly-progress-graph", "figure"),
+    Output("weekly-accum-graph", "figure"),
+    Output("executive-summary-table", "children"),
     Input("filter-contractor", "value"),
     Input("filter-discipline", "value"),
     Input("filter-system", "value"),
@@ -190,42 +184,67 @@ def update_dashboard(
     system: Optional[str],
     week: Optional[str],
 ):
-    # KPI cards are mission-critical: keep them available even if other API calls fail.
-    kpi_data = _fetch_dossier_kpis()
+    local_df = _load_local_dossier_csv()
+    in_scope_df = _in_scope(local_df).copy()
 
-    dossiers_error: Optional[Exception] = None
-    weld_error: Optional[Exception] = None
+    if not in_scope_df.empty:
+        in_scope_df["stage_category"] = derive_stage_category(in_scope_df)
+        in_scope_df["building_family"] = derive_building_family(in_scope_df)
 
-    try:
-        df = _fetch_dossiers(contractor=contractor, week=week)
-    except Exception as exc:
-        dossiers_error = exc
-        df = pd.DataFrame()
+    kpi_payload = _compute_kpis(local_df)
+    local_filtered = _apply_local_csv_filters(
+        local_df,
+        contractor=contractor,
+        discipline=discipline,
+        system=system,
+        week=week,
+    )
+    summary_filtered = _apply_local_csv_filters(
+        local_df,
+        contractor=contractor,
+        discipline=discipline,
+        system=system,
+        week=week,
+        include_out_of_scope=True,
+    )
+    summary_table = executive_summary_table(executive_summary_frame(summary_filtered))
 
-    try:
-        weld_metrics = _fetch_weld_metrics(contractor=contractor)
-    except Exception as exc:
-        weld_error = exc
-        weld_metrics = {}
+    contractor_options: list[dict[str, str]] = []
+    if "contractor" in in_scope_df.columns:
+        contractor_values = sorted(v for v in in_scope_df["contractor"].dropna().astype(str).unique() if v.strip())
+        contractor_options = [{"label": v.upper(), "value": v.upper()} for v in contractor_values]
 
-    filtered = _apply_local_filters(df, discipline=discipline, system=system)
-    contractor_options = _safe_options(df, ["CONTRATISTA"])
-    discipline_options = _safe_options(df, ["DISCIPLINA", "ETAPA"])
-    system_options = _safe_options(df, ["SISTEMA"])
-    week_options = _safe_options(df, ["ENTREGA", "SEMANA"])
+    stage_values = {
+        str(v).strip()
+        for v in in_scope_df.get("stage_category", pd.Series(dtype=object)).dropna().unique()
+        if str(v).strip()
+    }
+    discipline_values = [stage for stage in _STAGE_FILTER_ORDER if stage in stage_values]
+    discipline_options = [{"label": str(v), "value": str(v)} for v in discipline_values]
 
-    progress_message = "No se pudo cargar la data de dossiers desde la API." if dossiers_error else "Sin datos para mostrar"
-    welding_message = "No se pudo cargar la data de soldadura desde la API." if weld_error else "Sin datos para mostrar"
+    family_values = ["PRO", "SUE", "SHARED"]
+    system_options = [{"label": v, "value": v} for v in family_values]
+
+    week_options: list[dict[str, str]] = []
+    if not in_scope_df.empty and "hito_semana" in in_scope_df.columns:
+        semanas = sorted(
+            int(s)
+            for s in pd.to_numeric(in_scope_df["hito_semana"], errors="coerce").dropna().unique()
+        )
+        week_options = [{"label": f"Week {s}", "value": str(s)} for s in semanas]
 
     return (
         contractor_options,
         discipline_options,
         system_options,
         week_options,
-        executive_cards(kpi_data),
-        quality_cards(kpi_data, weld_metrics),
-        progress_figure(filtered) if not filtered.empty else empty_figure("Progreso de entrega", progress_message),
-        welding_figure(weld_metrics) if weld_metrics else empty_figure("Inspecciones de soldadura", welding_message),
+        executive_cards(kpi_payload),
+        quality_cards(kpi_payload),
+        status_by_stage_figure(local_filtered),
+        status_by_block_figure(local_filtered),
+        weekly_progress_figure(local_filtered),
+        weekly_accumulated_progress_figure(local_filtered),
+        summary_table,
     )
 
 
@@ -239,49 +258,129 @@ app.index_string = """
     {%css%}
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
-      :root {
-        --qa-ink: #10222f;
-        --qa-accent: #0f7c3f;
-        --qa-warning: #f3a712;
-        --qa-danger: #b83227;
-        --qa-surface: #f3f6f9;
-      }
+            :root {
+                --brand-navy: #0b2a4a;
+                --brand-blue: #1f4e79;
+                --brand-cyan: #2f7e95;
+                --brand-line: #9db4c7;
+                --qa-ink: #10222f;
+                --qa-surface: #eef3f8;
+            }
       body {
         margin: 0;
         color: var(--qa-ink);
         font-family: 'IBM Plex Sans', sans-serif;
         background:
-          radial-gradient(circle at 90% 10%, rgba(15,124,63,.16), transparent 35%),
-          radial-gradient(circle at 10% 20%, rgba(243,167,18,.15), transparent 40%),
+                    radial-gradient(circle at 90% 10%, rgba(47,126,149,.16), transparent 35%),
+                    radial-gradient(circle at 8% 20%, rgba(31,78,121,.12), transparent 42%),
           var(--qa-surface);
       }
       h1, h2, h3, h4, h5 {
         font-family: 'Space Grotesk', sans-serif;
-        letter-spacing: .01em;
+                letter-spacing: .008em;
       }
       .qa-shell {
         padding: 18px;
       }
+            .qa-hero {
+                border-top: 5px solid #66d0e2;
+                border-left: 3px solid rgba(255,255,255,.35);
+                background:
+                    linear-gradient(140deg, rgba(4,20,39,.98), rgba(12,53,90,.97) 60%, rgba(18,75,116,.95)),
+                    radial-gradient(circle at 88% 16%, rgba(102,208,226,.22), transparent 42%);
+                color: #f8fbff;
+                box-shadow: 0 16px 32px rgba(9,26,45,.3);
+                position: relative;
+                overflow: hidden;
+            }
+            .qa-hero::after {
+                content: "";
+                position: absolute;
+                inset: 0;
+                background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(0,0,0,.1));
+                pointer-events: none;
+            }
+            .qa-hero .card-body {
+                position: relative;
+                z-index: 1;
+            }
+            .qa-hero-kicker {
+                color: #a9d9e4;
+                font-size: .72rem;
+                text-transform: uppercase;
+                letter-spacing: .14em;
+                font-weight: 600;
+            }
+            .qa-page-title {
+                color: #ffffff;
+                font-size: clamp(1.7rem, 3.1vw, 2.55rem);
+                font-weight: 800;
+                letter-spacing: .02em;
+                text-transform: uppercase;
+                line-height: 1.05;
+                text-shadow: 0 2px 12px rgba(4,16,30,.42);
+            }
+            .qa-hero-subtitle {
+                color: rgba(236,247,252,.95);
+                font-size: .88rem;
+                letter-spacing: .035em;
+                font-weight: 500;
+            }
+            .qa-filter-row {
+                padding: .55rem .35rem .2rem;
+                border-top: 1px solid rgba(157,180,199,.42);
+                border-bottom: 1px solid rgba(157,180,199,.42);
+            }
+            .qa-section-title {
+                color: var(--brand-navy);
+                text-transform: uppercase;
+                letter-spacing: .05em;
+                font-size: .82rem;
+                margin-bottom: .45rem;
+            }
+            .qa-section-title-muted {
+                color: #587087;
+            }
+            .qa-kpi-zone {
+                border-bottom: 1px solid rgba(157,180,199,.35);
+                padding-bottom: .35rem;
+            }
+            .qa-secondary-kpis {
+                opacity: .92;
+            }
       .qa-panel {
-        border: 0;
+                border: 1px solid rgba(157,180,199,.48);
         border-radius: 16px;
-        background: rgba(255,255,255,.9);
-        box-shadow: 0 10px 28px rgba(16,34,47,.1);
+                background: rgba(255,255,255,.94);
+                box-shadow: 0 9px 22px rgba(16,34,47,.08);
       }
       .qa-kpi-value {
-        font-size: 1.85rem;
+                font-family: 'Space Grotesk', sans-serif;
+                font-size: clamp(1.8rem, 3.2vw, 2.35rem);
         font-weight: 700;
+                line-height: 1.05;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: clip;
+                font-variant-numeric: tabular-nums;
       }
       .qa-subtitle {
-        color: #5d6b78;
-        font-size: .86rem;
+                color: #405465;
+                font-size: .78rem;
+                letter-spacing: .02em;
       }
       @media (max-width: 900px) {
         .qa-shell {
           padding: 12px;
         }
+                .qa-hero-kicker {
+                    letter-spacing: .11em;
+                }
+                .qa-hero-subtitle {
+                    font-size: .82rem;
+                }
         .qa-kpi-value {
-          font-size: 1.45rem;
+                    font-size: 1.65rem;
         }
       }
     </style>
