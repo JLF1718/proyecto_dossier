@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from urllib.error import URLError
@@ -91,8 +92,22 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Run a compact release smoke validation for backend/dashboard health and management payloads."
     )
-    parser.add_argument("--api-base", default=None, help="Optional API base URL (for example http://127.0.0.1:8000)")
-    parser.add_argument("--dash-url", default=None, help="Optional dashboard URL (for example http://127.0.0.1:8050)")
+    parser.add_argument(
+        "--api-base",
+        default=os.getenv("QA_PUBLIC_API_BASE_URL") or None,
+        help=(
+            "Optional API base URL (for example http://127.0.0.1:8000). "
+            "Defaults to QA_PUBLIC_API_BASE_URL when set."
+        ),
+    )
+    parser.add_argument(
+        "--dash-url",
+        default=os.getenv("QA_PUBLIC_DASHBOARD_URL") or None,
+        help=(
+            "Optional dashboard URL (for example http://127.0.0.1:8050). "
+            "Defaults to QA_PUBLIC_DASHBOARD_URL when set."
+        ),
+    )
     args = parser.parse_args()
 
     try:

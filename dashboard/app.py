@@ -68,6 +68,17 @@ _PROCESSED_CSV_PATH = _PROJECT_ROOT / "data" / "processed" / "baysa_dossiers_cle
 _DASH_ASSETS_PATH = _PROJECT_ROOT / "assets"
 _PHYSICAL_SIGNAL_ENABLED = os.getenv("QA_ENABLE_PHYSICAL_SIGNAL", "1").strip().lower() in {"1", "true", "yes", "on"}
 
+
+def _normalize_dash_base_path(raw_path: str) -> str:
+    value = (raw_path or "/").strip()
+    if not value:
+        return "/"
+    if not value.startswith("/"):
+        value = f"/{value}"
+    if not value.endswith("/"):
+        value = f"{value}/"
+    return value
+
 _APPROVED = {"approved", "liberado", "aprobado", "aceptado"}
 _IN_REVIEW = {
     "in_review",
@@ -156,6 +167,8 @@ def _piece_stage_category(series: pd.Series) -> pd.Series:
 app = dash.Dash(
     __name__,
     assets_folder=str(_DASH_ASSETS_PATH),
+    requests_pathname_prefix=_normalize_dash_base_path(os.getenv("DASH_BASE_PATH", "/")),
+    routes_pathname_prefix=_normalize_dash_base_path(os.getenv("DASH_BASE_PATH", "/")),
     external_stylesheets=[dbc.themes.FLATLY, dbc.icons.BOOTSTRAP],
     title="QA Platform Dashboard",
     suppress_callback_exceptions=True,

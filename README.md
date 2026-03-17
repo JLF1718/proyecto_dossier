@@ -95,3 +95,88 @@ El smoke cubre:
 
 - Arquitectura actual: `docs/ARQUITECTURA_V2.md`
 - Deploy Ubuntu: `docs/DEPLOY_UBUNTU.md`
+
+## Compartir Dashboard de forma segura (HTTPS + Nginx)
+
+Objetivo: exponer QA Platform para terceros con una URL limpia, sin acceso directo a puertos internos.
+
+Estructura publica recomendada:
+
+- `https://qa.example.com/` -> Dashboard Dash (interno `127.0.0.1:8050`)
+- `https://qa.example.com/api/` -> Backend FastAPI (interno `127.0.0.1:8000`)
+- `https://qa.example.com/api/docs` -> Documentacion FastAPI
+
+### 1) Configurar Nginx reverse proxy
+
+Plantilla incluida:
+
+- `deploy/nginx/qa_platform.conf`
+
+Instalacion en Ubuntu:
+
+```bash
+sudo cp deploy/nginx/qa_platform.conf /etc/nginx/sites-available/qa_platform
+sudo ln -sf /etc/nginx/sites-available/qa_platform /etc/nginx/sites-enabled/qa_platform
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+Nota: cambia `server_name qa.example.com` por tu dominio real.
+
+### 2) HTTPS (Let\'s Encrypt)
+
+```bash
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d qa.example.com
+```
+
+Verifica:
+
+```bash
+curl -I https://qa.example.com/
+curl -I https://qa.example.com/api/health
+```
+
+### 3) Variables de entorno utiles para entorno publico
+
+Comportamiento local se mantiene por defecto. Para despliegue externo, puedes declarar:
+
+```bash
+# URL publica usada por smoke validation (opcional)
+export QA_PUBLIC_DASHBOARD_URL="https://qa.example.com/"
+export QA_PUBLIC_API_BASE_URL="https://qa.example.com"
+
+# Base path de Dash (opcional; default "/")
+# Solo si publicas en subruta, por ejemplo https://qa.example.com/qa/
+export DASH_BASE_PATH="/"
+```
+
+Uso de smoke con URL publica (si no pasas flags, toma las variables anteriores):
+
+```bash
+python3 scripts/smoke_validate_release.py
+```
+
+### 4) Opciones de seguridad recomendadas
+
+- Basic Auth en Nginx:
+```bash
+sudo apt install -y apache2-utils
+sudo htpasswd -c /etc/nginx/.htpasswd-qa-platform qauser
+```
+Activa `auth_basic` y `auth_basic_user_file` en `deploy/nginx/qa_platform.conf`.
+
+- IP allowlist en Nginx:
+crea un snippet con reglas `allow/deny` y referencialo desde el server block.
+
+- Cloudflare Tunnel (alternativa sin abrir puertos publicos):
+publica el dominio via cloudflared hacia `http://127.0.0.1` y mantiene backend/dashboard solo en localhost.
+
+### 5) Notas de systemd
+
+Si usas servicios systemd, revisa:
+
+- `deploy/systemd/qa_backend.service`
+- `deploy/systemd/qa_dashboard.service`
+
+Estos servicios mantienen backend y dashboard en puertos internos; Nginx gestiona acceso externo HTTPS.
