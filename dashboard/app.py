@@ -10,11 +10,13 @@ import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
+from urllib.parse import parse_qs
 
 import dash
 import dash_bootstrap_components as dbc
 import pandas as pd
-from dash import Input, Output, clientside_callback
+from dash import Input, Output, State
+from dash.exceptions import PreventUpdate
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(_PROJECT_ROOT) not in sys.path:
@@ -67,6 +69,7 @@ from dashboard.layout import create_layout
 _PROCESSED_CSV_PATH = _PROJECT_ROOT / "data" / "processed" / "baysa_dossiers_clean.csv"
 _DASH_ASSETS_PATH = _PROJECT_ROOT / "assets"
 _PHYSICAL_SIGNAL_ENABLED = os.getenv("QA_ENABLE_PHYSICAL_SIGNAL", "1").strip().lower() in {"1", "true", "yes", "on"}
+_EXPORT_API_BASE = os.getenv("QA_API_BASE", "http://127.0.0.1:8000").rstrip("/")
 
 _APPROVED = {"approved", "liberado", "aprobado", "aceptado"}
 _IN_REVIEW = {
@@ -151,6 +154,10 @@ def _piece_stage_category(series: pd.Series) -> pd.Series:
     numeric = pd.to_numeric(series, errors="coerce")
     out.loc[numeric.notna()] = "Stage " + numeric.loc[numeric.notna()].astype(int).astype(str)
     return out
+
+
+def _section_class(base: str, *, hidden: bool = False) -> str:
+    return f"{base} qa-export-section--hidden" if hidden else base
 
 
 app = dash.Dash(
@@ -254,22 +261,6 @@ def update_static_labels(language_store: Optional[Dict[str, str]]):
     )
 
 
-clientside_callback(
-    """
-    function(nClicks) {
-        if (!nClicks) {
-            return window.dash_clientside.no_update;
-        }
-        window.print();
-        return "printed";
-    }
-    """,
-    Output("print-action-status", "children"),
-    Input("print-action", "n_clicks"),
-    prevent_initial_call=True,
-)
-
-
 @app.callback(
     Output("qa-shell-root", "className"),
     Input("presentation-mode-toggle", "value"),
@@ -277,6 +268,50 @@ clientside_callback(
 def update_presentation_mode(toggle_value: Optional[list[str]]) -> str:
     is_presentation = bool(toggle_value) and "on" in toggle_value
     return "qa-shell qa-export-ready" if is_presentation else "qa-shell"
+
+
+@app.callback(
+    Output("language-selector", "value"),
+    Output("filter-contractor", "value"),
+    Output("filter-discipline", "value"),
+    Output("filter-system", "value"),
+    Output("filter-week", "value"),
+    Output("filter-compare-week", "value"),
+    Output("presentation-mode-toggle", "value"),
+    Output("management-history-toggle", "value"),
+    Input("dashboard-url", "search"),
+)
+def hydrate_state_from_query(search: Optional[str]):
+    if not search:
+        raise PreventUpdate
+
+    params = parse_qs(search.lstrip("?"), keep_blank_values=False)
+    if not params:
+        raise PreventUpdate
+
+    def _value(key: str) -> Optional[str]:
+        value = (params.get(key) or [None])[0]
+        if value is None:
+            return None
+        value = str(value).strip()
+        return value or None
+
+    export_mode = _value("export")
+    presentation_mode = _value("presentation")
+    if export_mode not in {"1", "true", "on", "yes"} and presentation_mode not in {"1", "true", "on", "yes"}:
+        raise PreventUpdate
+
+    history_mode = _value("history")
+    return (
+        normalize_lang(_value("lang")),
+        _value("contractor"),
+        _value("discipline"),
+        _value("system"),
+        _value("week"),
+        _value("compare_week"),
+        ["on"],
+        ["on"] if history_mode in {"1", "true", "on", "yes"} else [],
+    )
 
 
 @app.callback(
@@ -290,6 +325,7 @@ def update_presentation_mode(toggle_value: Optional[list[str]]) -> str:
     Output("physical-signal-kpis", "children"),
     Output("risk-exception-kpis", "children"),
     Output("historical-comparison-kpis", "children"),
+    Output("historical-comparison-kpis", "className"),
     Output("quality-kpis", "children"),
     Output("physical-signal-weekly-graph", "figure"),
     Output("weekly-release-count-graph", "figure"),
@@ -310,11 +346,26 @@ def update_presentation_mode(toggle_value: Optional[list[str]]) -> str:
     Output("weekly-accum-graph", "figure"),
     Output("executive-summary-table", "children"),
     Output("executive-report-pack", "children"),
+    Output("section-overview", "className"),
+    Output("section-weekly", "className"),
+    Output("section-risk", "className"),
+    Output("section-historical", "className"),
+    Output("section-analysis", "className"),
+    Output("section-report", "className"),
+    Output("section-summary", "className"),
+    Output("section-secondary", "className"),
+    Output("weekly-physical-row", "className"),
+    Output("weekly-release-row", "className"),
+    Output("weekly-cumulative-row", "className"),
+    Output("risk-tables-row", "className"),
+    Output("historical-trend-row-1", "className"),
+    Output("historical-trend-row-2", "className"),
     Input("language-store", "data"),
     Input("filter-contractor", "value"),
     Input("filter-discipline", "value"),
     Input("filter-system", "value"),
     Input("filter-week", "value"),
+    Input("presentation-mode-toggle", "value"),
     Input("management-history-toggle", "value"),
     Input("filter-compare-week", "value"),
 )
@@ -324,6 +375,7 @@ def update_dashboard(
     discipline: Optional[str],
     system: Optional[str],
     week: Optional[str],
+    presentation_toggle: Optional[list[str]],
     history_toggle: Optional[list[str]],
     compare_week: Optional[str],
 ):
@@ -351,7 +403,8 @@ def update_dashboard(
         week=week,
         include_out_of_scope=True,
     )
-    summary_table = executive_summary_table(executive_summary_frame(summary_filtered), lang=lang)
+    executive_summary_records = executive_summary_frame(summary_filtered)
+    summary_table = executive_summary_table(executive_summary_records, lang=lang)
     management_filtered = _apply_local_csv_filters(
         local_df,
         contractor=contractor,
@@ -405,6 +458,7 @@ def update_dashboard(
         comparison_week=effective_compare_week,
         language=lang,
     )
+    is_export_mode = bool(presentation_toggle) and "on" in presentation_toggle
 
     piece_payload = {"kpis": {}, "week_summary": [], "comparison": [], "exceptions": []}
     if _PHYSICAL_SIGNAL_ENABLED:
@@ -431,6 +485,37 @@ def update_dashboard(
             "exceptions": exceptions_df.to_dict("records") if not exceptions_df.empty else [],
         }
 
+    release_series = weekly_payload.get("weekly_comparison", {}).get("release_series", [])
+    history_series = historical_payload.get("history_series", [])
+
+    snapshot_status = historical_payload.get("snapshot_status", {})
+    snapshot_count = int(snapshot_status.get("snapshot_count", 0) or 0)
+    comparison = historical_payload.get("current_vs_selected", {})
+    if not comparison.get("available"):
+        comparison = historical_payload.get("current_vs_previous", {})
+    delta_keys = ["released_dossiers_delta", "released_weight_t_delta", "backlog_delta", "approval_delta"]
+    all_deltas_zero = all(abs(float(comparison.get(key, 0) or 0.0)) < 1e-9 for key in delta_keys)
+    low_value_history = snapshot_count <= 0 or len(history_series) <= 1 or all_deltas_zero
+
+    show_snapshot_charts = len(history_series) > 1 and not all_deltas_zero
+    show_historical = (snapshot_count > 0 and show_snapshot_charts) or len(piece_payload.get("comparison", [])) > 0
+    if is_export_mode and low_value_history:
+        show_historical = False
+    if is_export_mode and show_historical:
+        historical_has_comparison_table = len(piece_payload.get("comparison", [])) > 0
+        historical_has_full_chart_stack = len(history_series) > 2
+        show_historical = historical_has_comparison_table or historical_has_full_chart_stack
+    show_analysis = len(release_series) > 1
+    show_report = bool(report_payload.get("weekly_highlights", []) or report_payload.get("high_value_insights", []))
+    show_summary = not is_export_mode and not executive_summary_records.empty and snapshot_count > 0
+    show_secondary = int(kpi_payload.get("rejected_dossiers", kpi_payload.get("rejected", 0)) or 0) > 0
+
+    show_weekly_release_row = len(release_series) > 1
+    show_weekly_cumulative_row = len(release_series) > 2 and not is_export_mode
+    show_historical_kpis = show_snapshot_charts
+    show_historical_row_1 = show_snapshot_charts
+    show_historical_row_2 = show_snapshot_charts and len(history_series) > 2
+
     return (
         contractor_options,
         discipline_options,
@@ -440,29 +525,80 @@ def update_dashboard(
         executive_cards(kpi_payload, lang=lang),
         weekly_management_cards(weekly_payload, lang=lang),
         physical_signal_cards(piece_payload, lang=lang),
-        risk_exception_cards(weekly_payload, lang=lang),
+        risk_exception_cards(weekly_payload, lang=lang, compact=is_export_mode),
         historical_comparison_cards(historical_payload, lang=lang),
+        "mb-3 qa-kpi-zone" if show_historical_kpis else "mb-3 qa-kpi-zone qa-export-section--hidden",
         quality_cards(kpi_payload, lang=lang),
-        physical_signal_weekly_trend_figure(piece_payload, lang=lang),
-        weekly_released_dossiers_figure(weekly_payload, lang=lang),
-        weekly_released_weight_figure(weekly_payload, lang=lang),
-        cumulative_approved_growth_figure(weekly_payload, lang=lang),
-        cumulative_released_weight_growth_figure(weekly_payload, lang=lang),
-        snapshot_released_trend_figure(historical_payload, lang=lang),
-        snapshot_backlog_trend_figure(historical_payload, lang=lang),
-        snapshot_approval_trend_figure(historical_payload, lang=lang),
-        snapshot_released_weight_trend_figure(historical_payload, lang=lang),
-        backlog_aging_summary(weekly_payload, lang=lang),
-        stagnant_groups_summary(weekly_payload, lang=lang),
-        physical_signal_exceptions_table(piece_payload, lang=lang),
-        physical_signal_comparison_table(piece_payload, lang=lang),
+        physical_signal_weekly_trend_figure(piece_payload, lang=lang, export_mode=is_export_mode),
+        weekly_released_dossiers_figure(weekly_payload, lang=lang, export_mode=is_export_mode),
+        weekly_released_weight_figure(weekly_payload, lang=lang, export_mode=is_export_mode),
+        cumulative_approved_growth_figure(weekly_payload, lang=lang, export_mode=is_export_mode),
+        cumulative_released_weight_growth_figure(weekly_payload, lang=lang, export_mode=is_export_mode),
+        snapshot_released_trend_figure(historical_payload, lang=lang, export_mode=is_export_mode),
+        snapshot_backlog_trend_figure(historical_payload, lang=lang, export_mode=is_export_mode),
+        snapshot_approval_trend_figure(historical_payload, lang=lang, export_mode=is_export_mode),
+        snapshot_released_weight_trend_figure(historical_payload, lang=lang, export_mode=is_export_mode),
+        backlog_aging_summary(weekly_payload, lang=lang, compact=is_export_mode),
+        stagnant_groups_summary(weekly_payload, lang=lang, compact=is_export_mode),
+        physical_signal_exceptions_table(piece_payload, lang=lang, compact=is_export_mode),
+        physical_signal_comparison_table(piece_payload, lang=lang, compact=is_export_mode),
         status_by_stage_figure(local_filtered, lang=lang),
         status_by_block_figure(local_filtered, lang=lang),
         weekly_progress_figure(local_filtered, lang=lang),
         weekly_accumulated_progress_figure(local_filtered, lang=lang),
         summary_table,
         executive_report_pack(report_payload, lang=lang),
+        _section_class("qa-export-section qa-export-section--overview qa-print-page"),
+        _section_class("qa-export-section qa-export-section--weekly qa-print-page"),
+        _section_class("qa-export-section qa-export-section--risk qa-print-page"),
+        _section_class("qa-export-section qa-export-section--historical qa-print-page", hidden=not show_historical),
+        _section_class("qa-export-section qa-export-section--analysis qa-print-page", hidden=not show_analysis),
+        _section_class("qa-export-section qa-export-section--report qa-print-page", hidden=not show_report),
+        _section_class("qa-export-section qa-export-section--summary qa-print-page", hidden=not show_summary),
+        _section_class("qa-export-section qa-export-section--secondary qa-print-page", hidden=not show_secondary),
+        "qa-weekly-chart-row",
+        "qa-weekly-chart-row" if show_weekly_release_row else "qa-weekly-chart-row qa-export-section--hidden",
+        "qa-weekly-chart-row" if show_weekly_cumulative_row else "qa-weekly-chart-row qa-export-section--hidden",
+        "qa-risk-tables-row qa-export-section--hidden" if is_export_mode else "qa-risk-tables-row",
+        "qa-historical-chart-row" if show_historical_row_1 else "qa-historical-chart-row qa-export-section--hidden",
+        "qa-historical-chart-row" if show_historical_row_2 else "qa-historical-chart-row qa-export-section--hidden",
     )
+
+
+app.clientside_callback(
+    f"""
+    function(nClicks, lang, contractor, discipline, system, week, compareWeek, historyToggle) {{
+        if (!nClicks) {{ return window.dash_clientside.no_update; }}
+
+        var params = new URLSearchParams();
+        if (lang) {{ params.set("lang", String(lang)); }}
+        if (contractor) {{ params.set("contractor", String(contractor)); }}
+        if (discipline) {{ params.set("discipline", String(discipline)); }}
+        if (system) {{ params.set("system", String(system)); }}
+        if (week) {{ params.set("week", String(week)); }}
+        if (compareWeek) {{ params.set("compare_week", String(compareWeek)); }}
+        if (Array.isArray(historyToggle) && historyToggle.includes("on")) {{
+            params.set("history_mode", "1");
+        }}
+
+        var exportUrl = "{_EXPORT_API_BASE}/export/executive-pdf";
+        var suffix = params.toString();
+        var fullUrl = suffix ? (exportUrl + "?" + suffix) : exportUrl;
+        window.location.assign(fullUrl);
+        return String(Date.now());
+    }}
+    """,
+    Output("print-action-status", "children"),
+    Input("print-action", "n_clicks"),
+    State("language-selector", "value"),
+    State("filter-contractor", "value"),
+    State("filter-discipline", "value"),
+    State("filter-system", "value"),
+    State("filter-week", "value"),
+    State("filter-compare-week", "value"),
+    State("management-history-toggle", "value"),
+    prevent_initial_call=True,
+)
 
 
 app.index_string = """
@@ -718,6 +854,12 @@ app.index_string = """
                 break-inside: avoid;
                 page-break-inside: avoid;
             }
+            .qa-export-section--hidden {
+                display: none !important;
+            }
+            .qa-print-page {
+                display: block;
+            }
             .qa-export-section--secondary {
                 opacity: .84;
             }
@@ -746,12 +888,119 @@ app.index_string = """
                 font-size: .88rem;
                 letter-spacing: .08em;
             }
+            .qa-export-ready .qa-export-section--analysis,
+            .qa-export-ready .qa-export-section--report,
             .qa-export-ready .qa-export-section--secondary {
                 display: none;
             }
             .qa-report-header .card-body {
                 display: grid;
                 gap: .45rem;
+            }
+            .qa-static-table-wrap {
+                overflow: hidden;
+            }
+            .qa-static-table {
+                width: 100%;
+                border-collapse: collapse;
+                table-layout: fixed;
+            }
+            .qa-static-table__head {
+                padding: 7px 8px;
+                background: #eef3f8;
+                color: #10222f;
+                border-bottom: 1px solid #9db4c7;
+                font-size: 11px;
+                font-weight: 700;
+                letter-spacing: .03em;
+                text-align: left;
+                text-transform: uppercase;
+            }
+            .qa-static-table__cell {
+                padding: 7px 8px;
+                border-bottom: 1px solid #d8e2eb;
+                color: #10222f;
+                font-size: 11px;
+                line-height: 1.22;
+                text-align: left;
+                vertical-align: top;
+                overflow-wrap: anywhere;
+            }
+            .qa-static-table__cell--numeric {
+                text-align: right;
+                font-variant-numeric: tabular-nums;
+            }
+            .qa-static-table tbody tr:nth-child(odd) {
+                background: #f8fbfd;
+            }
+            .qa-export-ready .qa-brand-wordmark,
+            .qa-export-ready .qa-brand-subunit,
+            .qa-export-ready .qa-hero-kicker,
+            .qa-export-ready .qa-page-title,
+            .qa-export-ready .qa-hero-subtitle,
+            .qa-export-ready .qa-export-banner-kicker,
+            .qa-export-ready .qa-export-banner-title,
+            .qa-export-ready .qa-export-banner-subtitle {
+                word-spacing: normal;
+                word-break: normal;
+                overflow-wrap: normal;
+                white-space: normal;
+                font-kerning: normal;
+                font-feature-settings: 'kern' 1;
+            }
+            .qa-export-ready .qa-brand-wordmark {
+                letter-spacing: .06em;
+            }
+            .qa-export-ready .qa-brand-subunit,
+            .qa-export-ready .qa-hero-kicker,
+            .qa-export-ready .qa-export-banner-kicker {
+                letter-spacing: .07em;
+            }
+            .qa-export-ready .qa-page-title,
+            .qa-export-ready .qa-export-banner-title {
+                letter-spacing: .01em;
+                line-height: 1.08;
+                text-wrap: balance;
+            }
+            .qa-export-ready .qa-hero-subtitle,
+            .qa-export-ready .qa-export-banner-subtitle {
+                letter-spacing: .01em;
+                line-height: 1.32;
+            }
+            .qa-export-ready #weekly-physical-row,
+            .qa-export-ready #weekly-release-row {
+                display: grid;
+                margin: 0;
+            }
+            .qa-export-ready #weekly-physical-row {
+                grid-template-columns: minmax(0, 1fr);
+                gap: .7rem;
+            }
+            .qa-export-ready #weekly-release-row {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: .7rem;
+            }
+            .qa-export-ready #weekly-physical-row > [class*="col"],
+            .qa-export-ready #weekly-release-row > [class*="col"] {
+                width: 100%;
+                max-width: none;
+                flex: 0 0 auto;
+                padding: 0;
+                margin: 0;
+            }
+            .qa-export-ready #weekly-physical-row .qa-chart-card .card-body {
+                min-height: 320px;
+                max-height: none;
+            }
+            .qa-export-ready #weekly-release-row .qa-chart-card .card-body {
+                min-height: 360px;
+                max-height: none;
+            }
+            .qa-export-ready .qa-chart-card .dash-graph,
+            .qa-export-ready .qa-chart-card .js-plotly-plot,
+            .qa-export-ready .qa-chart-card .plot-container,
+            .qa-export-ready .qa-chart-card .svg-container {
+                height: 100% !important;
             }
             .qa-export-ready .modebar {
                 display: none !important;
@@ -779,7 +1028,7 @@ app.index_string = """
                 font-size: clamp(1.8rem, 3.2vw, 2.35rem);
         font-weight: 700;
                 line-height: 1.05;
-                white-space: nowrap;
+            white-space: nowrap;
                 overflow: hidden;
                 text-overflow: clip;
                 font-variant-numeric: tabular-nums;
@@ -789,13 +1038,22 @@ app.index_string = """
                 font-size: .78rem;
                 letter-spacing: .02em;
       }
+            .qa-print-hint {
+                color: #7a8fa0;
+                font-size: .68rem;
+                letter-spacing: .01em;
+                opacity: .82;
+            }
             @media print {
                 @page {
                     size: A4 landscape;
-                    margin: 12mm;
+                    margin: 9mm;
                 }
                 body {
                     background: #ffffff !important;
+                    color: #10222f;
+                    -webkit-print-color-adjust: exact;
+                    print-color-adjust: exact;
                 }
                 .qa-shell {
                     padding: 0;
@@ -824,6 +1082,39 @@ app.index_string = """
                     background: #ffffff;
                     border-color: #c7d4df;
                 }
+                .qa-brand-wordmark,
+                .qa-brand-subunit,
+                .qa-hero-kicker,
+                .qa-page-title,
+                .qa-hero-subtitle,
+                .qa-export-banner-kicker,
+                .qa-export-banner-title,
+                .qa-export-banner-subtitle {
+                    word-spacing: normal !important;
+                    word-break: normal !important;
+                    overflow-wrap: normal !important;
+                    white-space: normal !important;
+                    font-kerning: normal !important;
+                    font-feature-settings: 'kern' 1 !important;
+                }
+                .qa-brand-wordmark {
+                    letter-spacing: .05em !important;
+                }
+                .qa-brand-subunit,
+                .qa-hero-kicker,
+                .qa-export-banner-kicker {
+                    letter-spacing: .06em !important;
+                }
+                .qa-page-title,
+                .qa-export-banner-title {
+                    letter-spacing: .01em !important;
+                    line-height: 1.08 !important;
+                }
+                .qa-hero-subtitle,
+                .qa-export-banner-subtitle {
+                    letter-spacing: .01em !important;
+                    line-height: 1.3 !important;
+                }
                 .qa-logo-badge {
                     border-color: #c7d4df;
                     box-shadow: none;
@@ -836,11 +1127,13 @@ app.index_string = """
                 .qa-export-section--secondary {
                     display: none !important;
                 }
+                .qa-export-section--analysis,
+                .qa-export-section--report {
+                    display: none !important;
+                }
                 .qa-export-section--weekly,
                 .qa-export-section--risk,
                 .qa-export-section--historical,
-                .qa-export-section--analysis,
-                .qa-export-section--report,
                 .qa-export-section--summary {
                     break-before: page;
                     page-break-before: always;
@@ -848,7 +1141,26 @@ app.index_string = """
                 .qa-export-section {
                     break-inside: avoid;
                     page-break-inside: avoid;
-                    margin-bottom: 8mm;
+                    margin-bottom: 5mm;
+                }
+                .qa-print-page {
+                    display: grid;
+                    grid-template-rows: auto;
+                    align-content: start;
+                    gap: 1.8mm;
+                }
+                .qa-kpi-zone .row {
+                    display: grid !important;
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                    gap: 1.8mm;
+                    margin: 0 !important;
+                }
+                .qa-kpi-zone .row > [class*="col"] {
+                    width: 100% !important;
+                    max-width: none !important;
+                    flex: 0 0 auto !important;
+                    padding: 0 !important;
+                    margin: 0 !important;
                 }
                 .qa-chart-card,
                 .qa-table-card,
@@ -856,14 +1168,121 @@ app.index_string = """
                     break-inside: avoid;
                     page-break-inside: avoid;
                 }
+                .qa-kpi-card .card-body {
+                    min-height: 19mm;
+                    max-height: 24mm;
+                    padding: 4px 6px;
+                }
+                .qa-chart-card .card-body {
+                    min-height: 38mm;
+                    max-height: 68mm;
+                    padding: 4px 6px;
+                    overflow: hidden;
+                }
+                #weekly-physical-row,
+                #weekly-release-row {
+                    display: grid !important;
+                    margin: 0 !important;
+                }
+                #weekly-physical-row {
+                    grid-template-columns: minmax(0, 1fr);
+                    gap: 2mm;
+                }
+                #weekly-release-row {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                    gap: 2mm;
+                }
+                #weekly-physical-row > [class*="col"],
+                #weekly-release-row > [class*="col"] {
+                    width: 100% !important;
+                    max-width: none !important;
+                    flex: 0 0 auto !important;
+                    padding: 0 !important;
+                    margin: 0 !important;
+                }
+                #weekly-physical-row .qa-chart-card .card-body {
+                    min-height: 50mm;
+                    max-height: none;
+                }
+                #weekly-release-row .qa-chart-card .card-body {
+                    min-height: 58mm;
+                    max-height: none;
+                }
+                .qa-table-card .card-body {
+                    min-height: 26mm;
+                    max-height: 34mm;
+                    padding: 4px 6px;
+                }
+                .qa-kpi-value {
+                    font-size: .94rem;
+                    line-height: 1.12;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    writing-mode: horizontal-tb !important;
+                    text-orientation: mixed !important;
+                }
+                .qa-subtitle {
+                    font-size: .56rem;
+                    line-height: 1.16;
+                    overflow-wrap: break-word;
+                    writing-mode: horizontal-tb !important;
+                    text-orientation: mixed !important;
+                }
+                .qa-section-title {
+                    font-size: .58rem;
+                    margin-bottom: .14rem;
+                    letter-spacing: .06em;
+                }
+                .qa-chart-card .js-plotly-plot,
+                .qa-chart-card .plot-container,
+                .qa-chart-card .svg-container {
+                    min-height: 0 !important;
+                    max-height: none !important;
+                    height: 100% !important;
+                    overflow: hidden !important;
+                }
+                .js-plotly-plot,
+                .js-plotly-plot .plot-container,
+                .js-plotly-plot .svg-container {
+                    width: 100% !important;
+                    max-width: 100% !important;
+                    height: 100% !important;
+                }
+                .js-plotly-plot .svg-container > svg,
+                .js-plotly-plot .main-svg {
+                    width: 100% !important;
+                    height: 100% !important;
+                }
+                .js-plotly-plot .xtick text,
+                .js-plotly-plot .ytick text {
+                    font-size: 8px !important;
+                }
                 .modebar,
                 .dash-table-pagination {
                     display: none !important;
                 }
+                .qa-print-hint {
+                    display: none !important;
+                }
                 .dash-table-container .dash-spreadsheet-container th,
                 .dash-table-container .dash-spreadsheet-container td {
-                    font-size: 11px !important;
-                    padding: 6px 8px !important;
+                    font-size: 8px !important;
+                    padding: 2px 4px !important;
+                    line-height: 1.1;
+                }
+                .dash-table-container .dash-spreadsheet-container {
+                    max-height: 24mm;
+                    overflow: hidden;
+                }
+                .qa-static-table__head {
+                    font-size: 8px;
+                    padding: 3px 4px;
+                }
+                .qa-static-table__cell {
+                    font-size: 8px;
+                    padding: 3px 4px;
+                    line-height: 1.12;
                 }
             }
       @media (max-width: 900px) {

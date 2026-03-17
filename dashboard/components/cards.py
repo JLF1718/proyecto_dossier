@@ -94,7 +94,7 @@ def _kpi_card(
         "xs": xs,
         "md": md,
         "lg": lg,
-        "className": "mb-3",
+        "className": "mb-3 qa-kpi-col",
     }
     if xl is not None:
         col_kwargs["xl"] = xl
@@ -111,6 +111,55 @@ def _kpi_card(
             className="qa-panel qa-kpi-card h-100",
         ),
         **col_kwargs,
+    )
+
+
+def _table_text(value: Any) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return "—"
+    text = str(value).strip()
+    return text or "—"
+
+
+def _static_compact_table(
+    display: pd.DataFrame,
+    *,
+    numeric_columns: set[str] | None = None,
+    max_rows: int | None = None,
+) -> html.Div:
+    numeric_columns = numeric_columns or set()
+    frame = display.head(max_rows).copy() if max_rows is not None else display.copy()
+
+    return html.Div(
+        html.Table(
+            [
+                html.Thead(
+                    html.Tr(
+                        [html.Th(column, className="qa-static-table__head") for column in frame.columns]
+                    )
+                ),
+                html.Tbody(
+                    [
+                        html.Tr(
+                            [
+                                html.Td(
+                                    _table_text(row[column]),
+                                    className=(
+                                        "qa-static-table__cell qa-static-table__cell--numeric"
+                                        if column in numeric_columns
+                                        else "qa-static-table__cell"
+                                    ),
+                                )
+                                for column in frame.columns
+                            ]
+                        )
+                        for _, row in frame.iterrows()
+                    ]
+                ),
+            ],
+            className="qa-static-table qa-static-table--compact",
+        ),
+        className="qa-static-table-wrap",
     )
 
 
@@ -281,6 +330,8 @@ def _management_table_card(
     columns: list[tuple[str, str]],
     title: str,
     empty_message: str,
+    compact: bool = False,
+    max_rows: int | None = None,
 ) -> dbc.Card:
     if not records:
         return dbc.Card(
@@ -300,6 +351,19 @@ def _management_table_card(
             display[label] = frame[source]
         else:
             display[label] = ""
+
+    numeric_columns = {label for index, (label, _) in enumerate(columns) if index >= 2}
+
+    if compact:
+        return dbc.Card(
+            dbc.CardBody(
+                [
+                    html.Div(title, className="qa-section-title mb-2"),
+                    _static_compact_table(display, numeric_columns=numeric_columns, max_rows=max_rows),
+                ]
+            ),
+            className="qa-panel qa-table-card h-100",
+        )
 
     return dbc.Card(
         dbc.CardBody(
@@ -343,7 +407,7 @@ def _management_table_card(
     )
 
 
-def risk_exception_cards(payload: Dict[str, Any], lang: str = "en") -> html.Div:
+def risk_exception_cards(payload: Dict[str, Any], lang: str = "en", compact: bool = False) -> html.Div:
     risk = payload.get("risk_exception_summary", {})
     signals = {item.get("key"): item.get("value") for item in risk.get("signals", [])}
 
@@ -391,6 +455,8 @@ def risk_exception_cards(payload: Dict[str, Any], lang: str = "en") -> html.Div:
         ],
         title=t(lang, "report.top_backlog_risks"),
         empty_message=t(lang, "empty.no_backlog_groups"),
+        compact=compact,
+        max_rows=5,
     )
 
     gap_table = _management_table_card(
@@ -404,6 +470,8 @@ def risk_exception_cards(payload: Dict[str, Any], lang: str = "en") -> html.Div:
         ],
         title=t(lang, "kpi.largest_approval_gap"),
         empty_message=t(lang, "empty.no_data_selected_filters"),
+        compact=compact,
+        max_rows=5,
     )
 
     return html.Div(
@@ -568,9 +636,11 @@ def executive_report_pack(payload: Dict[str, Any], lang: str = "en") -> html.Div
     )
 
 
-def backlog_aging_summary(payload: Dict[str, Any], lang: str = "en") -> html.Div:
+def backlog_aging_summary(payload: Dict[str, Any], lang: str = "en", compact: bool = False) -> html.Div:
     summary = payload.get("backlog_aging_summary", {})
     groups = summary.get("groups", [])
+    if compact:
+        groups = groups[:8]
 
     header_cards = dbc.Row(
         [
@@ -608,7 +678,13 @@ def backlog_aging_summary(payload: Dict[str, Any], lang: str = "en") -> html.Div
 
     table = dbc.Card(
         dbc.CardBody(
-            dash_table.DataTable(
+            _static_compact_table(
+                display,
+                numeric_columns=set(display.columns) - {stage_col, family_col},
+                max_rows=5 if compact else None,
+            )
+            if compact
+            else dash_table.DataTable(
                 data=display.to_dict("records"),
                 columns=[{"name": column, "id": column} for column in display.columns],
                 page_action="none",
@@ -650,9 +726,11 @@ def backlog_aging_summary(payload: Dict[str, Any], lang: str = "en") -> html.Div
     return html.Div([header_cards, table])
 
 
-def stagnant_groups_summary(payload: Dict[str, Any], lang: str = "en") -> html.Div:
+def stagnant_groups_summary(payload: Dict[str, Any], lang: str = "en", compact: bool = False) -> html.Div:
     summary = payload.get("stagnant_groups_summary", {})
     groups = summary.get("groups", [])
+    if compact:
+        groups = groups[:8]
 
     header_cards = dbc.Row(
         [
@@ -689,7 +767,13 @@ def stagnant_groups_summary(payload: Dict[str, Any], lang: str = "en") -> html.D
 
     table = dbc.Card(
         dbc.CardBody(
-            dash_table.DataTable(
+            _static_compact_table(
+                display,
+                numeric_columns=set(display.columns) - {stage_col, family_col},
+                max_rows=5 if compact else None,
+            )
+            if compact
+            else dash_table.DataTable(
                 data=display.to_dict("records"),
                 columns=[{"name": column, "id": column} for column in display.columns],
                 page_action="none",
@@ -857,7 +941,7 @@ def physical_signal_cards(payload: Dict[str, Any], lang: str = "en") -> html.Div
     )
 
 
-def physical_signal_comparison_table(payload: Dict[str, Any], lang: str = "en") -> dbc.Card:
+def physical_signal_comparison_table(payload: Dict[str, Any], lang: str = "en", compact: bool = False) -> dbc.Card:
     records = payload.get("comparison", [])
     if not records:
         return dbc.Card(
@@ -908,13 +992,24 @@ def physical_signal_comparison_table(payload: Dict[str, Any], lang: str = "en") 
     status_col = t(lang, "table.alignment_status")
     table[status_col] = table[status_col].map(lambda s: t(lang, f"alignment.{s}") if s else "-")
 
+    if compact:
+        return dbc.Card(
+            dbc.CardBody(
+                _static_compact_table(
+                    table,
+                    numeric_columns={t(lang, "table.documented_progress_pct"), t(lang, "table.physical_signal_pct")},
+                    max_rows=5,
+                )
+            ),
+            className="qa-panel qa-table-card",
+        )
+
     return dbc.Card(
         dbc.CardBody(
             dash_table.DataTable(
                 data=table.to_dict("records"),
                 columns=[{"name": c, "id": c} for c in table.columns],
-                page_action="native",
-                page_size=10,
+                page_action="none",
                 style_table={"overflowX": "auto"},
                 style_cell={
                     "fontSize": "12px",
@@ -948,7 +1043,7 @@ def physical_signal_comparison_table(payload: Dict[str, Any], lang: str = "en") 
     )
 
 
-def physical_signal_exceptions_table(payload: Dict[str, Any], lang: str = "en") -> dbc.Card:
+def physical_signal_exceptions_table(payload: Dict[str, Any], lang: str = "en", compact: bool = False) -> dbc.Card:
     records = payload.get("exceptions", [])
     if not records:
         return dbc.Card(
@@ -968,13 +1063,18 @@ def physical_signal_exceptions_table(payload: Dict[str, Any], lang: str = "en") 
     )
     table[t(lang, "table.severity")] = table[t(lang, "table.severity")].str.upper()
 
+    if compact:
+        return dbc.Card(
+            dbc.CardBody(_static_compact_table(table, max_rows=6)),
+            className="qa-panel qa-table-card",
+        )
+
     return dbc.Card(
         dbc.CardBody(
             dash_table.DataTable(
                 data=table.to_dict("records"),
                 columns=[{"name": c, "id": c} for c in table.columns],
-                page_action="native",
-                page_size=8,
+                page_action="none",
                 style_table={"overflowX": "auto"},
                 style_cell={
                     "fontSize": "12px",

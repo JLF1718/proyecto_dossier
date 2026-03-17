@@ -13,6 +13,7 @@ def create_layout() -> html.Div:
         id="qa-shell-root",
         className="qa-shell",
         children=[
+            dcc.Location(id="dashboard-url", refresh=False),
             dcc.Store(id="language-store", storage_type="session", data={"lang": DEFAULT_LANG}),
             overview_page(DEFAULT_LANG),
         ],

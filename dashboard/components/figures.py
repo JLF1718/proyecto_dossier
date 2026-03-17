@@ -29,6 +29,27 @@ _STAGE_ORDER = [
 _FAMILY_ORDER = ["PRO", "SUE", "SHARED"]
 
 
+def _apply_executive_layout(fig: go.Figure, *, x_count: int = 0, export_mode: bool = False) -> go.Figure:
+    tick_angle = -32 if x_count > 9 else (0 if x_count <= 6 else -18)
+    fig.update_layout(
+        title={"x": 0.01, "font": {"size": 13 if export_mode else 15}},
+        font={"size": 11 if export_mode else 12},
+        margin={"l": 8 if export_mode else 16, "r": 10 if export_mode else 16, "t": 54 if export_mode else 72, "b": 40 if export_mode else 56},
+    )
+    fig.update_xaxes(
+        automargin=True,
+        tickangle=tick_angle,
+        tickfont={"size": 9 if export_mode else 10},
+        title_standoff=6 if export_mode else 10,
+    )
+    fig.update_yaxes(
+        automargin=True,
+        tickfont={"size": 9 if export_mode else 10},
+        title_standoff=6 if export_mode else 10,
+    )
+    return fig
+
+
 def _classify_status(series: pd.Series) -> pd.Series:
     """Map raw estatus values to the canonical three-way classification."""
     _APPROVED = {"approved", "liberado", "aprobado", "aceptado"}
@@ -284,7 +305,7 @@ def status_by_stage_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
         title_x=0.01,
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0.0},
     )
-    return fig
+    return _apply_executive_layout(fig, x_count=len(stage_labels))
 
 
 def status_by_block_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
@@ -329,7 +350,7 @@ def status_by_block_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
         title_x=0.01,
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0.0},
     )
-    return fig
+    return _apply_executive_layout(fig, x_count=len(grouped.index))
 
 
 def weekly_progress_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
@@ -376,9 +397,8 @@ def weekly_progress_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
         margin={"l": 12, "r": 12, "t": 64, "b": 56},
         title_x=0.01,
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0.0},
-        xaxis_tickangle=-45,
     )
-    return fig
+    return _apply_executive_layout(fig, x_count=len(grouped.index))
 
 
 def weekly_accumulated_progress_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
@@ -441,10 +461,10 @@ def weekly_accumulated_progress_figure(df: pd.DataFrame, lang: str = "en") -> go
         title_x=0.01,
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0.0},
     )
-    return fig
+    return _apply_executive_layout(fig, x_count=len(weeks))
 
 
-def weekly_released_dossiers_figure(payload: Dict[str, Any], lang: str = "en") -> go.Figure:
+def weekly_released_dossiers_figure(payload: Dict[str, Any], lang: str = "en", export_mode: bool = False) -> go.Figure:
     release_series = _weekly_payload_frame(payload, "release_series")
     if release_series.empty:
         return empty_figure(t(lang, "figure.weekly_released_dossiers.title"), t(lang, "figure.no_weekly_release"))
@@ -466,10 +486,10 @@ def weekly_released_dossiers_figure(payload: Dict[str, Any], lang: str = "en") -
         margin={"l": 12, "r": 12, "t": 64, "b": 48},
         title_x=0.01,
     )
-    return fig
+    return _apply_executive_layout(fig, x_count=len(release_series), export_mode=export_mode)
 
 
-def weekly_released_weight_figure(payload: Dict[str, Any], lang: str = "en") -> go.Figure:
+def weekly_released_weight_figure(payload: Dict[str, Any], lang: str = "en", export_mode: bool = False) -> go.Figure:
     release_series = _weekly_payload_frame(payload, "release_series")
     if release_series.empty:
         return empty_figure(t(lang, "figure.weekly_released_weight.title"), t(lang, "figure.no_weekly_release"))
@@ -491,10 +511,10 @@ def weekly_released_weight_figure(payload: Dict[str, Any], lang: str = "en") -> 
         margin={"l": 12, "r": 12, "t": 64, "b": 48},
         title_x=0.01,
     )
-    return fig
+    return _apply_executive_layout(fig, x_count=len(release_series), export_mode=export_mode)
 
 
-def cumulative_approved_growth_figure(payload: Dict[str, Any], lang: str = "en") -> go.Figure:
+def cumulative_approved_growth_figure(payload: Dict[str, Any], lang: str = "en", export_mode: bool = False) -> go.Figure:
     cumulative_series = _weekly_payload_frame(payload, "cumulative_series")
     if cumulative_series.empty:
         return empty_figure(t(lang, "figure.cum_approved.title"), t(lang, "figure.no_cumulative_release"))
@@ -517,10 +537,10 @@ def cumulative_approved_growth_figure(payload: Dict[str, Any], lang: str = "en")
         margin={"l": 12, "r": 12, "t": 64, "b": 48},
         title_x=0.01,
     )
-    return fig
+    return _apply_executive_layout(fig, x_count=len(cumulative_series), export_mode=export_mode)
 
 
-def cumulative_released_weight_growth_figure(payload: Dict[str, Any], lang: str = "en") -> go.Figure:
+def cumulative_released_weight_growth_figure(payload: Dict[str, Any], lang: str = "en", export_mode: bool = False) -> go.Figure:
     cumulative_series = _weekly_payload_frame(payload, "cumulative_series")
     if cumulative_series.empty:
         return empty_figure(t(lang, "figure.cum_weight.title"), t(lang, "figure.no_cumulative_release"))
@@ -543,7 +563,7 @@ def cumulative_released_weight_growth_figure(payload: Dict[str, Any], lang: str 
         margin={"l": 12, "r": 12, "t": 64, "b": 48},
         title_x=0.01,
     )
-    return fig
+    return _apply_executive_layout(fig, x_count=len(cumulative_series), export_mode=export_mode)
 
 
 def _historical_frame(payload: Dict[str, Any]) -> pd.DataFrame:
@@ -565,6 +585,7 @@ def _historical_trend_figure(
     y_key: str,
     color: str,
     lang: str = "en",
+    export_mode: bool = False,
 ) -> go.Figure:
     history = _historical_frame(payload)
     if history.empty or metric not in history.columns:
@@ -596,10 +617,10 @@ def _historical_trend_figure(
         margin={"l": 12, "r": 12, "t": 64, "b": 48},
         title_x=0.01,
     )
-    return fig
+    return _apply_executive_layout(fig, x_count=len(history), export_mode=export_mode)
 
 
-def snapshot_released_trend_figure(payload: Dict[str, Any], lang: str = "en") -> go.Figure:
+def snapshot_released_trend_figure(payload: Dict[str, Any], lang: str = "en", export_mode: bool = False) -> go.Figure:
     return _historical_trend_figure(
         payload,
         metric="released_this_week",
@@ -608,10 +629,11 @@ def snapshot_released_trend_figure(payload: Dict[str, Any], lang: str = "en") ->
         y_key="figure.snapshot_released.y",
         color=_STATUS_COLORS["approved"],
         lang=lang,
+        export_mode=export_mode,
     )
 
 
-def snapshot_backlog_trend_figure(payload: Dict[str, Any], lang: str = "en") -> go.Figure:
+def snapshot_backlog_trend_figure(payload: Dict[str, Any], lang: str = "en", export_mode: bool = False) -> go.Figure:
     return _historical_trend_figure(
         payload,
         metric="backlog_dossiers",
@@ -620,10 +642,11 @@ def snapshot_backlog_trend_figure(payload: Dict[str, Any], lang: str = "en") -> 
         y_key="figure.snapshot_backlog.y",
         color="#d99000",
         lang=lang,
+        export_mode=export_mode,
     )
 
 
-def snapshot_approval_trend_figure(payload: Dict[str, Any], lang: str = "en") -> go.Figure:
+def snapshot_approval_trend_figure(payload: Dict[str, Any], lang: str = "en", export_mode: bool = False) -> go.Figure:
     return _historical_trend_figure(
         payload,
         metric="approved_dossiers",
@@ -632,10 +655,11 @@ def snapshot_approval_trend_figure(payload: Dict[str, Any], lang: str = "en") ->
         y_key="figure.snapshot_approval.y",
         color="#2d6fb7",
         lang=lang,
+        export_mode=export_mode,
     )
 
 
-def snapshot_released_weight_trend_figure(payload: Dict[str, Any], lang: str = "en") -> go.Figure:
+def snapshot_released_weight_trend_figure(payload: Dict[str, Any], lang: str = "en", export_mode: bool = False) -> go.Figure:
     return _historical_trend_figure(
         payload,
         metric="released_weight_t_this_week",
@@ -644,10 +668,11 @@ def snapshot_released_weight_trend_figure(payload: Dict[str, Any], lang: str = "
         y_key="figure.snapshot_weight.y",
         color="#0f6cbd",
         lang=lang,
+        export_mode=export_mode,
     )
 
 
-def physical_signal_weekly_trend_figure(payload: Dict[str, Any], lang: str = "en") -> go.Figure:
+    def physical_signal_weekly_trend_figure(payload: Dict[str, Any], lang: str = "en", export_mode: bool = False) -> go.Figure:
     records = payload.get("week_summary", []) if payload else []
     if not records:
         return empty_figure(t(lang, "figure.physical_signal_weekly.title"), t(lang, "figure.no_data"))
@@ -695,4 +720,4 @@ def physical_signal_weekly_trend_figure(payload: Dict[str, Any], lang: str = "en
         margin={"l": 12, "r": 12, "t": 64, "b": 42},
         title_x=0.01,
     )
-    return fig
+    return _apply_executive_layout(fig, x_count=len(x_labels), export_mode=export_mode)

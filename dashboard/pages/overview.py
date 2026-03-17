@@ -103,7 +103,7 @@ def overview_page(lang: str = "en") -> dbc.Container:
                         ),
                         xs=12,
                         md=6,
-                        lg=4,
+                        lg=3,
                         className="mb-2",
                     ),
                     dbc.Col(
@@ -148,7 +148,7 @@ def overview_page(lang: str = "en") -> dbc.Container:
                         ),
                         xs=12,
                         md=6,
-                        lg=5,
+                        lg=3,
                         className="mb-2",
                     ),
                     dbc.Col(
@@ -160,10 +160,11 @@ def overview_page(lang: str = "en") -> dbc.Container:
                                         [
                                             html.Button(
                                                 [
-                                                    html.I(className="bi bi-printer me-2", **{"aria-hidden": "true"}),
+                                                    html.I(className="bi bi-filetype-pdf me-2", **{"aria-hidden": "true"}),
                                                     html.Span(t(lang, "export.print.action"), id="print-action-label"),
                                                 ],
                                                 id="print-action",
+                                                type="button",
                                                 n_clicks=0,
                                                 className="qa-print-button",
                                             ),
@@ -171,12 +172,17 @@ def overview_page(lang: str = "en") -> dbc.Container:
                                         ],
                                         className="qa-export-actions",
                                     ),
+                                    html.Small(
+                                        "Server-side export with deterministic PDF layout.",
+                                        className="qa-print-hint d-block mt-1",
+                                    ),
                                 ]
                             ),
                             className="qa-panel qa-control-card h-100",
                         ),
                         xs=12,
-                        lg=4,
+                        md=6,
+                        lg=3,
                         className="mb-2",
                     ),
                 ],
@@ -222,7 +228,8 @@ def overview_page(lang: str = "en") -> dbc.Container:
                     html.H5(t(lang, "section.executive_overview"), id="section-executive-overview", className="qa-section-title mt-1 mb-2"),
                     html.Div(id="executive-kpis", className="mb-4 qa-kpi-zone"),
                 ],
-                className="qa-export-section qa-export-section--overview",
+                id="section-overview",
+                className="qa-export-section qa-export-section--overview qa-print-page",
             ),
             html.Section(
                 [
@@ -240,7 +247,9 @@ def overview_page(lang: str = "en") -> dbc.Container:
                                 xs=12,
                                 className="mb-3",
                             ),
-                        ]
+                        ],
+                        id="weekly-physical-row",
+                        className="qa-weekly-chart-row",
                     ),
                     dbc.Row(
                         [
@@ -262,7 +271,9 @@ def overview_page(lang: str = "en") -> dbc.Container:
                                 lg=6,
                                 className="mb-3",
                             ),
-                        ]
+                        ],
+                        id="historical-trend-row-1",
+                        className="qa-historical-chart-row",
                     ),
                     dbc.Row(
                         [
@@ -284,10 +295,13 @@ def overview_page(lang: str = "en") -> dbc.Container:
                                 lg=6,
                                 className="mb-3",
                             ),
-                        ]
+                        ],
+                        id="weekly-cumulative-row",
+                        className="qa-weekly-chart-row",
                     ),
                 ],
-                className="qa-export-section qa-export-section--weekly",
+                id="section-weekly",
+                className="qa-export-section qa-export-section--weekly qa-print-page",
             ),
             html.Section(
                 [
@@ -298,10 +312,13 @@ def overview_page(lang: str = "en") -> dbc.Container:
                         [
                             dbc.Col(html.Div(id="backlog-aging-summary", className="mb-3"), xs=12, lg=6),
                             dbc.Col(html.Div(id="stagnant-groups-summary", className="mb-3"), xs=12, lg=6),
-                        ]
+                        ],
+                        id="risk-tables-row",
+                        className="qa-risk-tables-row",
                     ),
                 ],
-                className="qa-export-section qa-export-section--risk",
+                id="section-risk",
+                className="qa-export-section qa-export-section--risk qa-print-page",
             ),
             html.Section(
                 [
@@ -328,7 +345,9 @@ def overview_page(lang: str = "en") -> dbc.Container:
                                 lg=6,
                                 className="mb-3",
                             ),
-                        ]
+                        ],
+                        id="weekly-release-row",
+                        className="qa-weekly-chart-row",
                     ),
                     dbc.Row(
                         [
@@ -350,10 +369,13 @@ def overview_page(lang: str = "en") -> dbc.Container:
                                 lg=6,
                                 className="mb-3",
                             ),
-                        ]
+                        ],
+                        id="historical-trend-row-2",
+                        className="qa-historical-chart-row",
                     ),
                 ],
-                className="qa-export-section qa-export-section--historical",
+                id="section-historical",
+                className="qa-export-section qa-export-section--historical qa-print-page",
             ),
             html.Section(
                 [
@@ -403,21 +425,24 @@ def overview_page(lang: str = "en") -> dbc.Container:
                         ]
                     ),
                 ],
-                className="qa-export-section qa-export-section--analysis",
+                id="section-analysis",
+                className="qa-export-section qa-export-section--analysis qa-print-page",
             ),
             html.Section(
                 [
                     html.H5(t(lang, "section.executive_report_pack"), id="section-executive-report-pack", className="qa-section-title mt-2 mb-2"),
                     html.Div(id="executive-report-pack", className="mb-4"),
                 ],
-                className="qa-export-section qa-export-section--report",
+                id="section-report",
+                className="qa-export-section qa-export-section--report qa-print-page",
             ),
             html.Section(
                 [
                     html.H5(t(lang, "section.executive_summary"), id="section-executive-summary", className="qa-section-title mt-2 mb-2"),
                     html.Div(id="executive-summary-table", className="mb-4"),
                 ],
-                className="qa-export-section qa-export-section--summary",
+                id="section-summary",
+                className="qa-export-section qa-export-section--summary qa-print-page",
             ),
             html.Section(
                 [
@@ -428,7 +453,8 @@ def overview_page(lang: str = "en") -> dbc.Container:
                     ),
                     html.Div(id="quality-kpis", className="mb-1 qa-secondary-kpis"),
                 ],
-                className="qa-export-section qa-export-section--secondary",
+                id="section-secondary",
+                className="qa-export-section qa-export-section--secondary qa-print-page",
             ),
         ],
     )
