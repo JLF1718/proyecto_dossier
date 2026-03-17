@@ -27,12 +27,40 @@ class _Theme:
     warning: tuple[int, int, int] = (185, 28, 28)
 
 
-CONTENT_BOX = {"x": 0.62, "y": 1.62, "w": 10.90, "h": 5.55}
+SLIDE_WIDTH_IN = 13.333
+SLIDE_HEIGHT_IN = 7.5
+CONTENT_MARGIN_LEFT_IN = 0.62
+CONTENT_MARGIN_RIGHT_IN = 0.62
+CONTENT_MARGIN_TOP_IN = 1.62
+CONTENT_MARGIN_BOTTOM_IN = 0.33
 CONTENT_EDGE_PAD = 0.04
 
 
 def _box(x: float, y: float, w: float, h: float) -> dict[str, float]:
     return {"x": float(x), "y": float(y), "w": float(w), "h": float(h)}
+
+
+def _emu_to_inches(value: int) -> float:
+    return float(value) / 914400.0
+
+
+def _compute_content_box(slide_box: dict[str, float]) -> dict[str, float]:
+    return _box(
+        CONTENT_MARGIN_LEFT_IN,
+        CONTENT_MARGIN_TOP_IN,
+        max(0.25, slide_box["w"] - CONTENT_MARGIN_LEFT_IN - CONTENT_MARGIN_RIGHT_IN),
+        max(0.18, slide_box["h"] - CONTENT_MARGIN_TOP_IN - CONTENT_MARGIN_BOTTOM_IN),
+    )
+
+
+def assertInsideSlideBounds(box: dict[str, float], slide_box: dict[str, float]) -> None:
+    eps = 1e-6
+    right = box["x"] + box["w"]
+    bottom = box["y"] + box["h"]
+    s_right = slide_box["x"] + slide_box["w"]
+    s_bottom = slide_box["y"] + slide_box["h"]
+    if box["x"] < slide_box["x"] - eps or box["y"] < slide_box["y"] - eps or right > s_right + eps or bottom > s_bottom + eps:
+        raise ValueError(f"Shape outside slide bounds: box={box}, slideBox={slide_box}")
 
 
 def assertInsideContentBox(box: dict[str, float], contentBox: dict[str, float]) -> None:
@@ -171,9 +199,17 @@ def _layout_risk(content_box: dict[str, float]) -> dict[str, dict[str, float]]:
     return {"top_left": top_left, "top_right": top_right, "bottom": bottom}
 
 
-def _add_textbox_clamped(slide, *, box: dict[str, float], content_box: dict[str, float], symbols: dict[str, Any]):
+def _add_textbox_clamped(
+    slide,
+    *,
+    box: dict[str, float],
+    content_box: dict[str, float],
+    slide_box: dict[str, float],
+    symbols: dict[str, Any],
+):
     clamped = _reflow_inside_content_box(box, content_box)
     assertInsideContentBox(clamped, content_box)
+    assertInsideSlideBounds(clamped, slide_box)
     return slide.shapes.add_textbox(
         symbols["Inches"](clamped["x"]),
         symbols["Inches"](clamped["y"]),
@@ -182,9 +218,18 @@ def _add_textbox_clamped(slide, *, box: dict[str, float], content_box: dict[str,
     )
 
 
-def _add_picture_clamped(slide, image: BytesIO, *, box: dict[str, float], content_box: dict[str, float], symbols: dict[str, Any]) -> None:
+def _add_picture_clamped(
+    slide,
+    image: BytesIO,
+    *,
+    box: dict[str, float],
+    content_box: dict[str, float],
+    slide_box: dict[str, float],
+    symbols: dict[str, Any],
+) -> None:
     clamped = _reflow_inside_content_box(box, content_box)
     assertInsideContentBox(clamped, content_box)
+    assertInsideSlideBounds(clamped, slide_box)
     slide.shapes.add_picture(
         image,
         symbols["Inches"](clamped["x"]),
@@ -380,18 +425,32 @@ def _render_signal_alignment_chart(piece_payload: dict[str, Any]) -> BytesIO:
     return image
 
 
-def _add_brand(slide, *, logo_path: Optional[Path], symbols: dict[str, Any], theme: _Theme) -> None:
+def _add_brand(
+    slide,
+    *,
+    logo_path: Optional[Path],
+    slide_box: dict[str, float],
+    symbols: dict[str, Any],
+    theme: _Theme,
+) -> None:
     Inches = symbols["Inches"]
     Pt = symbols["Pt"]
     RGBColor = symbols["RGBColor"]
 
-    bar = slide.shapes.add_shape(symbols["MSO_SHAPE"].RECTANGLE, Inches(0), Inches(0), Inches(13.333), Inches(0.32))
+    bar = slide.shapes.add_shape(
+        symbols["MSO_SHAPE"].RECTANGLE,
+        Inches(slide_box["x"]),
+        Inches(slide_box["y"]),
+        Inches(slide_box["w"]),
+        Inches(0.32),
+    )
     bar.fill.solid()
     bar.fill.fore_color.rgb = _rgb(RGBColor, theme.navy)
     bar.line.fill.background()
 
     if logo_path and logo_path.exists():
-        slide.shapes.add_picture(str(logo_path), Inches(11.55), Inches(0.02), height=Inches(0.26))
+        logo_x = max(0.35, slide_box["w"] - 1.78)
+        slide.shapes.add_picture(str(logo_path), Inches(logo_x), Inches(0.02), height=Inches(0.26))
 
     label = slide.shapes.add_textbox(Inches(0.35), Inches(0.04), Inches(6.5), Inches(0.24))
     tf = label.text_frame
@@ -401,7 +460,16 @@ def _add_brand(slide, *, logo_path: Optional[Path], symbols: dict[str, Any], the
     tf.paragraphs[0].font.color.rgb = _rgb(RGBColor, theme.white)
 
 
-def _add_title(slide, title: str, subtitle: str, *, symbols: dict[str, Any], theme: _Theme) -> None:
+def _add_title(
+    slide,
+    title: str,
+    subtitle: str,
+    *,
+    content_box: dict[str, float],
+    slide_box: dict[str, float],
+    symbols: dict[str, Any],
+    theme: _Theme,
+) -> None:
     Inches = symbols["Inches"]
     Pt = symbols["Pt"]
     RGBColor = symbols["RGBColor"]
@@ -413,7 +481,14 @@ def _add_title(slide, title: str, subtitle: str, *, symbols: dict[str, Any], the
     title_frame.paragraphs[0].font.bold = True
     title_frame.paragraphs[0].font.color.rgb = _rgb(RGBColor, theme.navy)
 
-    subtitle_box = slide.shapes.add_textbox(Inches(CONTENT_BOX["x"]), Inches(1.18), Inches(CONTENT_BOX["w"]), Inches(0.4))
+    subtitle_rect = _reflow_inside_content_box(_box(content_box["x"], 1.18, content_box["w"], 0.4), content_box)
+    assertInsideSlideBounds(subtitle_rect, slide_box)
+    subtitle_box = slide.shapes.add_textbox(
+        Inches(subtitle_rect["x"]),
+        Inches(subtitle_rect["y"]),
+        Inches(subtitle_rect["w"]),
+        Inches(subtitle_rect["h"]),
+    )
     subtitle_frame = subtitle_box.text_frame
     subtitle_frame.text = subtitle
     subtitle_frame.paragraphs[0].font.size = Pt(12)
@@ -430,6 +505,7 @@ def _add_kpi_card(
     label: str,
     value: str,
     content_box: dict[str, float],
+    slide_box: dict[str, float],
     symbols: dict[str, Any],
     theme: _Theme,
 ) -> None:
@@ -449,11 +525,13 @@ def _add_kpi_card(
     card.fill.fore_color.rgb = _rgb(RGBColor, theme.light_bg)
     card.line.color.rgb = _rgb(RGBColor, (214, 220, 227))
     assertInsideContentBox(card_box, content_box)
+    assertInsideSlideBounds(card_box, slide_box)
 
     label_box = _add_textbox_clamped(
         slide,
         box=_box(card_box["x"] + 0.12, card_box["y"] + 0.08, max(0.2, card_box["w"] - 0.18), 0.20),
         content_box=content_box,
+        slide_box=slide_box,
         symbols=symbols,
     )
     label_tf = label_box.text_frame
@@ -466,6 +544,7 @@ def _add_kpi_card(
         slide,
         box=_box(card_box["x"] + 0.12, card_box["y"] + 0.30, max(0.2, card_box["w"] - 0.18), 0.38),
         content_box=content_box,
+        slide_box=slide_box,
         symbols=symbols,
     )
     value_tf = value_box.text_frame
@@ -485,6 +564,7 @@ def _add_table(
     headers: list[str],
     rows: list[list[str]],
     content_box: dict[str, float],
+    slide_box: dict[str, float],
     max_cols: Optional[int],
     symbols: dict[str, Any],
     theme: _Theme,
@@ -495,6 +575,7 @@ def _add_table(
 
     table_box = _reflow_inside_content_box(_box(left, top, width, height), content_box)
     assertInsideContentBox(table_box, content_box)
+    assertInsideSlideBounds(table_box, slide_box)
 
     headers_fit, rows_fit, col_widths = _fit_table_data(
         headers,
@@ -545,19 +626,37 @@ def _add_table(
             cell.margin_bottom = Inches(0.01)
 
 
-def _add_cover_slide(prs, *, report_meta: dict[str, Any], symbols: dict[str, Any], theme: _Theme, logo_path: Optional[Path]) -> None:
+def _add_cover_slide(
+    prs,
+    *,
+    report_meta: dict[str, Any],
+    content_box: dict[str, float],
+    slide_box: dict[str, float],
+    symbols: dict[str, Any],
+    theme: _Theme,
+    logo_path: Optional[Path],
+) -> None:
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    _add_brand(slide, logo_path=logo_path, symbols=symbols, theme=theme)
+    _add_brand(slide, logo_path=logo_path, slide_box=slide_box, symbols=symbols, theme=theme)
 
     analysis_week = report_meta.get("analysis_week")
     generated_at = report_meta.get("generated_at") or datetime.now(timezone.utc).isoformat()
     subtitle = f"Board Executive Pack | Week {analysis_week if analysis_week is not None else '-'} | Generated {generated_at[:19]}Z"
-    _add_title(slide, "QA Platform Executive Pack", subtitle, symbols=symbols, theme=theme)
+    _add_title(
+        slide,
+        "QA Platform Executive Pack",
+        subtitle,
+        content_box=content_box,
+        slide_box=slide_box,
+        symbols=symbols,
+        theme=theme,
+    )
 
     body = _add_textbox_clamped(
         slide,
-        box=_box(CONTENT_BOX["x"], 2.0, CONTENT_BOX["w"], 1.8),
-        content_box=CONTENT_BOX,
+        box=_box(content_box["x"], 2.0, content_box["w"], 1.8),
+        content_box=content_box,
+        slide_box=slide_box,
         symbols=symbols,
     )
     tf = body.text_frame
@@ -570,13 +669,23 @@ def _add_kpi_slide(
     prs,
     *,
     executive_payload: dict[str, Any],
+    content_box: dict[str, float],
+    slide_box: dict[str, float],
     symbols: dict[str, Any],
     theme: _Theme,
     logo_path: Optional[Path],
 ) -> None:
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    _add_brand(slide, logo_path=logo_path, symbols=symbols, theme=theme)
-    _add_title(slide, "Executive KPI Overview", "Contract scope performance at a glance", symbols=symbols, theme=theme)
+    _add_brand(slide, logo_path=logo_path, slide_box=slide_box, symbols=symbols, theme=theme)
+    _add_title(
+        slide,
+        "Executive KPI Overview",
+        "Contract scope performance at a glance",
+        content_box=content_box,
+        slide_box=slide_box,
+        symbols=symbols,
+        theme=theme,
+    )
 
     kpis = executive_payload.get("executive_kpis", {})
     weekly = executive_payload.get("weekly_management", {})
@@ -588,7 +697,7 @@ def _add_kpi_slide(
         ("Weight Released (t)", _fmt_num(kpis.get("peso_liberado_ton", 0.0), ndigits=2)),
     ]
 
-    overview_layout = _layout_overview(CONTENT_BOX)
+    overview_layout = _layout_overview(content_box)
     for idx, (label, value) in enumerate(cards):
         card_box = overview_layout["cards"][idx]
         _add_kpi_card(
@@ -599,7 +708,8 @@ def _add_kpi_slide(
             height=card_box["h"],
             label=label,
             value=value,
-            content_box=CONTENT_BOX,
+            content_box=content_box,
+            slide_box=slide_box,
             symbols=symbols,
             theme=theme,
         )
@@ -624,7 +734,8 @@ def _add_kpi_slide(
         height=overview_layout["left_table"]["h"],
         headers=["Weekly Highlight", "Value", "Delta vs Prev"],
         rows=rows,
-        content_box=CONTENT_BOX,
+        content_box=content_box,
+        slide_box=slide_box,
         max_cols=3,
         symbols=symbols,
         theme=theme,
@@ -651,7 +762,8 @@ def _add_kpi_slide(
         height=overview_layout["right_table"]["h"],
         headers=["Stage", "Family", "Backlog", "Approval"],
         rows=summary_rows,
-        content_box=CONTENT_BOX,
+        content_box=content_box,
+        slide_box=slide_box,
         max_cols=4,
         symbols=symbols,
         theme=theme,
@@ -663,37 +775,51 @@ def _add_weekly_signal_slide(
     *,
     executive_payload: dict[str, Any],
     piece_payload: dict[str, Any],
+    content_box: dict[str, float],
+    slide_box: dict[str, float],
     symbols: dict[str, Any],
     theme: _Theme,
     logo_path: Optional[Path],
 ) -> None:
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    _add_brand(slide, logo_path=logo_path, symbols=symbols, theme=theme)
-    _add_title(slide, "Weekly Management + Physical Execution Signal", "Documentary trend against field signal", symbols=symbols, theme=theme)
+    _add_brand(slide, logo_path=logo_path, slide_box=slide_box, symbols=symbols, theme=theme)
+    _add_title(
+        slide,
+        "Weekly Management + Physical Execution Signal",
+        "Documentary trend against field signal",
+        content_box=content_box,
+        slide_box=slide_box,
+        symbols=symbols,
+        theme=theme,
+    )
 
     release_chart = _render_release_chart(executive_payload.get("weekly_management", {}))
     signal_chart = _render_signal_alignment_chart(piece_payload)
 
     include_secondary_chart = True
-    trend_layout = _layout_trend(CONTENT_BOX, include_secondary_chart=include_secondary_chart)
+    trend_layout = _layout_trend(content_box, include_secondary_chart=include_secondary_chart)
 
     main_chart_box = trend_layout["main_chart"]
     secondary_chart_box = trend_layout["secondary_chart"]
-    assertInsideContentBox(main_chart_box, CONTENT_BOX)
-    assertInsideContentBox(secondary_chart_box, CONTENT_BOX)
+    assertInsideContentBox(main_chart_box, content_box)
+    assertInsideContentBox(secondary_chart_box, content_box)
+    assertInsideSlideBounds(main_chart_box, slide_box)
+    assertInsideSlideBounds(secondary_chart_box, slide_box)
 
     _add_picture_clamped(
         slide,
         release_chart,
         box=main_chart_box,
-        content_box=CONTENT_BOX,
+        content_box=content_box,
+        slide_box=slide_box,
         symbols=symbols,
     )
     _add_picture_clamped(
         slide,
         signal_chart,
         box=secondary_chart_box,
-        content_box=CONTENT_BOX,
+        content_box=content_box,
+        slide_box=slide_box,
         symbols=symbols,
     )
 
@@ -716,7 +842,8 @@ def _add_weekly_signal_slide(
         height=trend_layout["bottom_table"]["h"],
         headers=["Weekly Metric", "Value"],
         rows=metric_rows,
-        content_box=CONTENT_BOX,
+        content_box=content_box,
+        slide_box=slide_box,
         max_cols=2,
         symbols=symbols,
         theme=theme,
@@ -728,13 +855,23 @@ def _add_risk_slide(
     *,
     executive_payload: dict[str, Any],
     piece_payload: dict[str, Any],
+    content_box: dict[str, float],
+    slide_box: dict[str, float],
     symbols: dict[str, Any],
     theme: _Theme,
     logo_path: Optional[Path],
 ) -> None:
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    _add_brand(slide, logo_path=logo_path, symbols=symbols, theme=theme)
-    _add_title(slide, "Risk and Exceptions", "Top-N concentration for board focus", symbols=symbols, theme=theme)
+    _add_brand(slide, logo_path=logo_path, slide_box=slide_box, symbols=symbols, theme=theme)
+    _add_title(
+        slide,
+        "Risk and Exceptions",
+        "Top-N concentration for board focus",
+        content_box=content_box,
+        slide_box=slide_box,
+        symbols=symbols,
+        theme=theme,
+    )
 
     top_backlog = _safe_list(executive_payload.get("top_backlog_risks", []))[:5]
     backlog_rows = [
@@ -781,7 +918,7 @@ def _add_risk_slide(
     if not exception_rows:
         exception_rows = [["-", "-", "-", "-"]]
 
-    risk_layout = _layout_risk(CONTENT_BOX)
+    risk_layout = _layout_risk(content_box)
 
     _add_table(
         slide,
@@ -791,7 +928,8 @@ def _add_risk_slide(
         height=risk_layout["top_left"]["h"],
         headers=["Stage", "Family", "Backlog", "Age w"],
         rows=backlog_rows,
-        content_box=CONTENT_BOX,
+        content_box=content_box,
+        slide_box=slide_box,
         max_cols=4,
         symbols=symbols,
         theme=theme,
@@ -805,7 +943,8 @@ def _add_risk_slide(
         height=risk_layout["top_right"]["h"],
         headers=["Stage", "Family", "Gap", "Approval"],
         rows=approval_rows,
-        content_box=CONTENT_BOX,
+        content_box=content_box,
+        slide_box=slide_box,
         max_cols=4,
         symbols=symbols,
         theme=theme,
@@ -819,7 +958,8 @@ def _add_risk_slide(
         height=risk_layout["bottom"]["h"],
         headers=["Severity", "Type", "Block", "Details"],
         rows=exception_rows,
-        content_box=CONTENT_BOX,
+        content_box=content_box,
+        slide_box=slide_box,
         max_cols=4,
         symbols=symbols,
         theme=theme,
@@ -830,6 +970,8 @@ def _add_closing_slide(
     prs,
     *,
     executive_payload: dict[str, Any],
+    content_box: dict[str, float],
+    slide_box: dict[str, float],
     symbols: dict[str, Any],
     theme: _Theme,
     logo_path: Optional[Path],
@@ -840,8 +982,16 @@ def _add_closing_slide(
         return
 
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    _add_brand(slide, logo_path=logo_path, symbols=symbols, theme=theme)
-    _add_title(slide, "Alignment and Closing Summary", "Action-oriented executive takeaways", symbols=symbols, theme=theme)
+    _add_brand(slide, logo_path=logo_path, slide_box=slide_box, symbols=symbols, theme=theme)
+    _add_title(
+        slide,
+        "Alignment and Closing Summary",
+        "Action-oriented executive takeaways",
+        content_box=content_box,
+        slide_box=slide_box,
+        symbols=symbols,
+        theme=theme,
+    )
 
     lines: list[str] = []
     for item in insights[:4]:
@@ -867,8 +1017,9 @@ def _add_closing_slide(
 
     box = _add_textbox_clamped(
         slide,
-        box=_box(CONTENT_BOX["x"], 1.9, CONTENT_BOX["w"], 4.8),
-        content_box=CONTENT_BOX,
+        box=_box(content_box["x"], 1.9, content_box["w"], 4.8),
+        content_box=content_box,
+        slide_box=slide_box,
         symbols=symbols,
     )
     tf = box.text_frame
@@ -909,16 +1060,41 @@ def generate_executive_pack_pptx(
 
     Presentation = symbols["Presentation"]
     prs = Presentation()
+    Inches = symbols["Inches"]
+    prs.slide_width = Inches(SLIDE_WIDTH_IN)
+    prs.slide_height = Inches(SLIDE_HEIGHT_IN)
+
+    slide_box = _box(0.0, 0.0, _emu_to_inches(prs.slide_width), _emu_to_inches(prs.slide_height))
+    content_box = _compute_content_box(slide_box)
+    assertInsideSlideBounds(content_box, slide_box)
 
     settings = get_settings()
     logo_path = settings.project_root / "assets" / "inpros-logo.png"
 
-    _add_cover_slide(prs, report_meta=executive_payload.get("report_meta", {}), symbols=symbols, theme=theme, logo_path=logo_path)
-    _add_kpi_slide(prs, executive_payload=executive_payload, symbols=symbols, theme=theme, logo_path=logo_path)
+    _add_cover_slide(
+        prs,
+        report_meta=executive_payload.get("report_meta", {}),
+        content_box=content_box,
+        slide_box=slide_box,
+        symbols=symbols,
+        theme=theme,
+        logo_path=logo_path,
+    )
+    _add_kpi_slide(
+        prs,
+        executive_payload=executive_payload,
+        content_box=content_box,
+        slide_box=slide_box,
+        symbols=symbols,
+        theme=theme,
+        logo_path=logo_path,
+    )
     _add_weekly_signal_slide(
         prs,
         executive_payload=executive_payload,
         piece_payload=piece_payload,
+        content_box=content_box,
+        slide_box=slide_box,
         symbols=symbols,
         theme=theme,
         logo_path=logo_path,
@@ -927,11 +1103,21 @@ def generate_executive_pack_pptx(
         prs,
         executive_payload=executive_payload,
         piece_payload=piece_payload,
+        content_box=content_box,
+        slide_box=slide_box,
         symbols=symbols,
         theme=theme,
         logo_path=logo_path,
     )
-    _add_closing_slide(prs, executive_payload=executive_payload, symbols=symbols, theme=theme, logo_path=logo_path)
+    _add_closing_slide(
+        prs,
+        executive_payload=executive_payload,
+        content_box=content_box,
+        slide_box=slide_box,
+        symbols=symbols,
+        theme=theme,
+        logo_path=logo_path,
+    )
 
     out = BytesIO()
     prs.save(out)
