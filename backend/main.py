@@ -22,7 +22,7 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 from backend.config import get_settings
-from backend.routers import concrete, dossiers, metrics, ncforms, welds
+from backend.routers import concrete, dossiers, executive_pack, metrics, ncforms, welds
 from database.session import init_db
 
 # ── App instance ─────────────────────────────────────────────────────────────
@@ -70,6 +70,7 @@ app.include_router(metrics.router)
 app.include_router(welds.router)
 app.include_router(concrete.router)
 app.include_router(ncforms.router)
+app.include_router(executive_pack.router)
 
 
 @app.on_event("startup")
