@@ -27,6 +27,216 @@ class _Theme:
     warning: tuple[int, int, int] = (185, 28, 28)
 
 
+CONTENT_BOX = {"x": 0.62, "y": 1.62, "w": 10.90, "h": 5.55}
+CONTENT_EDGE_PAD = 0.04
+
+
+def _box(x: float, y: float, w: float, h: float) -> dict[str, float]:
+    return {"x": float(x), "y": float(y), "w": float(w), "h": float(h)}
+
+
+def assertInsideContentBox(box: dict[str, float], contentBox: dict[str, float]) -> None:
+    eps = 1e-6
+    right = box["x"] + box["w"]
+    bottom = box["y"] + box["h"]
+    c_right = contentBox["x"] + contentBox["w"]
+    c_bottom = contentBox["y"] + contentBox["h"]
+    if box["x"] < contentBox["x"] - eps or box["y"] < contentBox["y"] - eps or right > c_right + eps or bottom > c_bottom + eps:
+        raise ValueError(f"Shape outside content box: box={box}, contentBox={contentBox}")
+
+
+def _clamp_to_content_box(box: dict[str, float], content_box: dict[str, float]) -> dict[str, float]:
+    inner_x = content_box["x"] + CONTENT_EDGE_PAD
+    inner_y = content_box["y"] + CONTENT_EDGE_PAD
+    inner_w = max(0.25, content_box["w"] - 2 * CONTENT_EDGE_PAD)
+    inner_h = max(0.18, content_box["h"] - 2 * CONTENT_EDGE_PAD)
+
+    max_w = max(0.25, inner_w)
+    max_h = max(0.18, inner_h)
+    w = min(max(0.25, box["w"]), max_w)
+    h = min(max(0.18, box["h"]), max_h)
+    max_x = inner_x + inner_w - w
+    max_y = inner_y + inner_h - h
+    x = min(max(box["x"], inner_x), max_x)
+    y = min(max(box["y"], inner_y), max_y)
+    clamped = _box(x, y, w, h)
+    assertInsideContentBox(clamped, content_box)
+    return clamped
+
+
+def _reflow_inside_content_box(box: dict[str, float], content_box: dict[str, float]) -> dict[str, float]:
+    clamped = _clamp_to_content_box(box, content_box)
+    try:
+        assertInsideContentBox(clamped, content_box)
+        return clamped
+    except ValueError:
+        fallback = _clamp_to_content_box(
+            _box(clamped["x"], clamped["y"], max(0.25, clamped["w"] - 0.06), max(0.18, clamped["h"] - 0.06)),
+            content_box,
+        )
+        assertInsideContentBox(fallback, content_box)
+        return fallback
+
+
+def _layout_overview(content_box: dict[str, float]) -> dict[str, Any]:
+    pad = CONTENT_EDGE_PAD
+    gap = 0.10
+    cards_h = 1.00
+    inner_x = content_box["x"] + pad
+    inner_y = content_box["y"] + pad
+    inner_w = content_box["w"] - 2 * pad
+    inner_h = content_box["h"] - 2 * pad
+    
+    cards_w = (inner_w - (3 * gap)) / 4
+    cards = []
+    for idx in range(4):
+        card_x = inner_x + idx * (cards_w + gap)
+        card_box = _box(card_x, inner_y, cards_w, cards_h)
+        clamped = _reflow_inside_content_box(card_box, content_box)
+        assertInsideContentBox(clamped, content_box)
+        cards.append(clamped)
+
+    tables_top = inner_y + cards_h + 0.18
+    tables_h = inner_h - cards_h - 0.18
+    table_w = (inner_w - gap) / 2
+    left_table_box = _box(inner_x, tables_top, table_w, tables_h)
+    left_table = _reflow_inside_content_box(left_table_box, content_box)
+    assertInsideContentBox(left_table, content_box)
+    
+    right_table_box = _box(inner_x + table_w + gap, tables_top, table_w, tables_h)
+    right_table = _reflow_inside_content_box(right_table_box, content_box)
+    assertInsideContentBox(right_table, content_box)
+    
+    return {"cards": cards, "left_table": left_table, "right_table": right_table}
+
+
+def _layout_trend(content_box: dict[str, float], *, include_secondary_chart: bool) -> dict[str, dict[str, float]]:
+    pad = CONTENT_EDGE_PAD
+    gap = 0.16
+    top_h = 3.35
+    
+    inner_x = content_box["x"] + pad
+    inner_y = content_box["y"] + pad
+    inner_w = content_box["w"] - 2 * pad
+    inner_h = content_box["h"] - 2 * pad
+    bottom_h = inner_h - top_h - gap
+    
+    if include_secondary_chart:
+        secondary_w = max(2.35, min(2.96, inner_w * 0.24))
+        main_w = max(5.0, inner_w - secondary_w - gap)
+        main_chart_box = _box(inner_x, inner_y, main_w, top_h)
+        main_chart = _reflow_inside_content_box(main_chart_box, content_box)
+        assertInsideContentBox(main_chart, content_box)
+        
+        secondary_chart_box = _box(inner_x + main_w + gap, inner_y, secondary_w, top_h)
+        secondary_chart = _reflow_inside_content_box(secondary_chart_box, content_box)
+        assertInsideContentBox(secondary_chart, content_box)
+    else:
+        main_chart_box = _box(inner_x, inner_y, inner_w, top_h)
+        main_chart = _reflow_inside_content_box(main_chart_box, content_box)
+        assertInsideContentBox(main_chart, content_box)
+        secondary_chart = _reflow_inside_content_box(_box(inner_x, inner_y, 0.25, 0.18), content_box)
+
+    bottom_table_box = _box(inner_x, inner_y + top_h + gap, inner_w, bottom_h)
+    bottom_table = _reflow_inside_content_box(bottom_table_box, content_box)
+    assertInsideContentBox(bottom_table, content_box)
+    
+    return {"main_chart": main_chart, "secondary_chart": secondary_chart, "bottom_table": bottom_table}
+
+
+def _layout_risk(content_box: dict[str, float]) -> dict[str, dict[str, float]]:
+    pad = CONTENT_EDGE_PAD
+    gap = 0.10
+    top_h = 2.30
+    
+    inner_x = content_box["x"] + pad
+    inner_y = content_box["y"] + pad
+    inner_w = content_box["w"] - 2 * pad
+    inner_h = content_box["h"] - 2 * pad
+    bottom_h = inner_h - top_h - gap
+    
+    top_w = (inner_w - gap) / 2
+    top_left_box = _box(inner_x, inner_y, top_w, top_h)
+    top_left = _reflow_inside_content_box(top_left_box, content_box)
+    assertInsideContentBox(top_left, content_box)
+    
+    top_right_box = _box(inner_x + top_w + gap, inner_y, top_w, top_h)
+    top_right = _reflow_inside_content_box(top_right_box, content_box)
+    assertInsideContentBox(top_right, content_box)
+    
+    bottom_box = _box(inner_x, inner_y + top_h + gap, inner_w, bottom_h)
+    bottom = _reflow_inside_content_box(bottom_box, content_box)
+    assertInsideContentBox(bottom, content_box)
+    
+    return {"top_left": top_left, "top_right": top_right, "bottom": bottom}
+
+
+def _add_textbox_clamped(slide, *, box: dict[str, float], content_box: dict[str, float], symbols: dict[str, Any]):
+    clamped = _reflow_inside_content_box(box, content_box)
+    assertInsideContentBox(clamped, content_box)
+    return slide.shapes.add_textbox(
+        symbols["Inches"](clamped["x"]),
+        symbols["Inches"](clamped["y"]),
+        symbols["Inches"](clamped["w"]),
+        symbols["Inches"](clamped["h"]),
+    )
+
+
+def _add_picture_clamped(slide, image: BytesIO, *, box: dict[str, float], content_box: dict[str, float], symbols: dict[str, Any]) -> None:
+    clamped = _reflow_inside_content_box(box, content_box)
+    assertInsideContentBox(clamped, content_box)
+    slide.shapes.add_picture(
+        image,
+        symbols["Inches"](clamped["x"]),
+        symbols["Inches"](clamped["y"]),
+        width=symbols["Inches"](clamped["w"]),
+        height=symbols["Inches"](clamped["h"]),
+    )
+
+
+def _short_header(value: str) -> str:
+    mapping = {
+        "weekly highlight": "Highlight",
+        "delta vs prev": "Delta",
+        "building family": "Family",
+        "stage category": "Stage",
+        "open backlog": "Backlog",
+        "approval pct": "Approval",
+        "released this week": "Released",
+        "released weight this week (t)": "Weight t",
+        "piece signal coverage": "Signal %",
+        "indexed weight total (kg)": "Weight kg",
+        "max age weeks": "Age w",
+        "exception type": "Type",
+    }
+    return mapping.get(str(value).strip().lower(), str(value))
+
+
+def _fit_table_data(
+    headers: list[str],
+    rows: list[list[str]],
+    *,
+    max_cols: int,
+    width: float,
+) -> tuple[list[str], list[list[str]], list[float]]:
+    cols = min(max_cols, len(headers))
+    short_headers = [_short_header(h)[:14] for h in headers[:cols]]
+    fitted_rows = [[str(col)[:42] for col in row[:cols]] for row in rows]
+
+    ratios: list[float] = []
+    for idx in range(cols):
+        header_len = max(4, len(short_headers[idx]))
+        col_len = max([header_len] + [len(r[idx]) if idx < len(r) else 0 for r in fitted_rows])
+        ratios.append(float(max(1, col_len)))
+
+    ratio_sum = sum(ratios) or 1.0
+    min_col = max(0.55, width / (cols * 2.5))
+    computed = [max(min_col, width * (r / ratio_sum)) for r in ratios]
+    scale = width / (sum(computed) or 1.0)
+    col_widths = [w * scale for w in computed]
+    return short_headers, fitted_rows, col_widths
+
+
 def _load_pptx_symbols() -> dict[str, Any]:
     try:
         from pptx import Presentation
@@ -203,7 +413,7 @@ def _add_title(slide, title: str, subtitle: str, *, symbols: dict[str, Any], the
     title_frame.paragraphs[0].font.bold = True
     title_frame.paragraphs[0].font.color.rgb = _rgb(RGBColor, theme.navy)
 
-    subtitle_box = slide.shapes.add_textbox(Inches(0.62), Inches(1.18), Inches(11.0), Inches(0.4))
+    subtitle_box = slide.shapes.add_textbox(Inches(CONTENT_BOX["x"]), Inches(1.18), Inches(CONTENT_BOX["w"]), Inches(0.4))
     subtitle_frame = subtitle_box.text_frame
     subtitle_frame.text = subtitle
     subtitle_frame.paragraphs[0].font.size = Pt(12)
@@ -219,6 +429,7 @@ def _add_kpi_card(
     height: float,
     label: str,
     value: str,
+    content_box: dict[str, float],
     symbols: dict[str, Any],
     theme: _Theme,
 ) -> None:
@@ -226,22 +437,40 @@ def _add_kpi_card(
     Pt = symbols["Pt"]
     RGBColor = symbols["RGBColor"]
 
-    card = slide.shapes.add_shape(symbols["MSO_SHAPE"].ROUNDED_RECTANGLE, Inches(left), Inches(top), Inches(width), Inches(height))
+    card_box = _reflow_inside_content_box(_box(left, top, width, height), content_box)
+    card = slide.shapes.add_shape(
+        symbols["MSO_SHAPE"].ROUNDED_RECTANGLE,
+        Inches(card_box["x"]),
+        Inches(card_box["y"]),
+        Inches(card_box["w"]),
+        Inches(card_box["h"]),
+    )
     card.fill.solid()
     card.fill.fore_color.rgb = _rgb(RGBColor, theme.light_bg)
     card.line.color.rgb = _rgb(RGBColor, (214, 220, 227))
+    assertInsideContentBox(card_box, content_box)
 
-    label_box = slide.shapes.add_textbox(Inches(left + 0.18), Inches(top + 0.10), Inches(width - 0.22), Inches(0.22))
+    label_box = _add_textbox_clamped(
+        slide,
+        box=_box(card_box["x"] + 0.12, card_box["y"] + 0.08, max(0.2, card_box["w"] - 0.18), 0.20),
+        content_box=content_box,
+        symbols=symbols,
+    )
     label_tf = label_box.text_frame
     label_tf.text = label
-    label_tf.paragraphs[0].font.size = Pt(10)
+    label_tf.paragraphs[0].font.size = Pt(9)
     label_tf.paragraphs[0].font.bold = True
     label_tf.paragraphs[0].font.color.rgb = _rgb(RGBColor, theme.slate)
 
-    value_box = slide.shapes.add_textbox(Inches(left + 0.18), Inches(top + 0.36), Inches(width - 0.22), Inches(0.40))
+    value_box = _add_textbox_clamped(
+        slide,
+        box=_box(card_box["x"] + 0.12, card_box["y"] + 0.30, max(0.2, card_box["w"] - 0.18), 0.38),
+        content_box=content_box,
+        symbols=symbols,
+    )
     value_tf = value_box.text_frame
     value_tf.text = value
-    value_tf.paragraphs[0].font.size = Pt(22)
+    value_tf.paragraphs[0].font.size = Pt(18)
     value_tf.paragraphs[0].font.bold = True
     value_tf.paragraphs[0].font.color.rgb = _rgb(RGBColor, theme.navy)
 
@@ -255,6 +484,8 @@ def _add_table(
     height: float,
     headers: list[str],
     rows: list[list[str]],
+    content_box: dict[str, float],
+    max_cols: Optional[int],
     symbols: dict[str, Any],
     theme: _Theme,
 ) -> None:
@@ -262,28 +493,56 @@ def _add_table(
     Pt = symbols["Pt"]
     RGBColor = symbols["RGBColor"]
 
-    table_shape = slide.shapes.add_table(len(rows) + 1, len(headers), Inches(left), Inches(top), Inches(width), Inches(height))
+    table_box = _reflow_inside_content_box(_box(left, top, width, height), content_box)
+    assertInsideContentBox(table_box, content_box)
+
+    headers_fit, rows_fit, col_widths = _fit_table_data(
+        headers,
+        rows,
+        max_cols=max_cols or len(headers),
+        width=table_box["w"],
+    )
+
+    table_shape = slide.shapes.add_table(
+        len(rows_fit) + 1,
+        len(headers_fit),
+        Inches(table_box["x"]),
+        Inches(table_box["y"]),
+        Inches(table_box["w"]),
+        Inches(table_box["h"]),
+    )
     table = table_shape.table
 
-    for idx, header in enumerate(headers):
+    for idx, col_width in enumerate(col_widths):
+        table.columns[idx].width = Inches(col_width)
+
+    for idx, header in enumerate(headers_fit):
         cell = table.cell(0, idx)
         cell.text = header
         cell.fill.solid()
         cell.fill.fore_color.rgb = _rgb(RGBColor, theme.navy)
         run = cell.text_frame.paragraphs[0].runs[0]
         run.font.bold = True
-        run.font.size = Pt(10)
+        run.font.size = Pt(8)
         run.font.color.rgb = _rgb(RGBColor, theme.white)
+        cell.margin_left = Inches(0.02)
+        cell.margin_right = Inches(0.02)
+        cell.margin_top = Inches(0.01)
+        cell.margin_bottom = Inches(0.01)
 
-    for ridx, row in enumerate(rows, start=1):
+    for ridx, row in enumerate(rows_fit, start=1):
         for cidx, value in enumerate(row):
             cell = table.cell(ridx, cidx)
             cell.text = value
             cell.fill.solid()
             cell.fill.fore_color.rgb = _rgb(RGBColor, theme.white if ridx % 2 else theme.light_bg)
             run = cell.text_frame.paragraphs[0].runs[0]
-            run.font.size = Pt(9)
+            run.font.size = Pt(8)
             run.font.color.rgb = _rgb(RGBColor, theme.navy)
+            cell.margin_left = Inches(0.02)
+            cell.margin_right = Inches(0.02)
+            cell.margin_top = Inches(0.01)
+            cell.margin_bottom = Inches(0.01)
 
 
 def _add_cover_slide(prs, *, report_meta: dict[str, Any], symbols: dict[str, Any], theme: _Theme, logo_path: Optional[Path]) -> None:
@@ -295,7 +554,12 @@ def _add_cover_slide(prs, *, report_meta: dict[str, Any], symbols: dict[str, Any
     subtitle = f"Board Executive Pack | Week {analysis_week if analysis_week is not None else '-'} | Generated {generated_at[:19]}Z"
     _add_title(slide, "QA Platform Executive Pack", subtitle, symbols=symbols, theme=theme)
 
-    body = slide.shapes.add_textbox(symbols["Inches"](0.62), symbols["Inches"](2.0), symbols["Inches"](12.0), symbols["Inches"](1.8))
+    body = _add_textbox_clamped(
+        slide,
+        box=_box(CONTENT_BOX["x"], 2.0, CONTENT_BOX["w"], 1.8),
+        content_box=CONTENT_BOX,
+        symbols=symbols,
+    )
     tf = body.text_frame
     tf.text = "Executive narrative: performance, weekly execution signal, and material risks."
     tf.paragraphs[0].font.size = symbols["Pt"](15)
@@ -324,17 +588,18 @@ def _add_kpi_slide(
         ("Weight Released (t)", _fmt_num(kpis.get("peso_liberado_ton", 0.0), ndigits=2)),
     ]
 
-    start_left = 0.62
-    card_w = 3.06
+    overview_layout = _layout_overview(CONTENT_BOX)
     for idx, (label, value) in enumerate(cards):
+        card_box = overview_layout["cards"][idx]
         _add_kpi_card(
             slide,
-            left=start_left + idx * 3.18,
-            top=1.95,
-            width=card_w,
-            height=1.05,
+            left=card_box["x"],
+            top=card_box["y"],
+            width=card_box["w"],
+            height=card_box["h"],
             label=label,
             value=value,
+            content_box=CONTENT_BOX,
             symbols=symbols,
             theme=theme,
         )
@@ -353,12 +618,14 @@ def _add_kpi_slide(
 
     _add_table(
         slide,
-        left=0.62,
-        top=3.25,
-        width=6.26,
-        height=2.95,
+        left=overview_layout["left_table"]["x"],
+        top=overview_layout["left_table"]["y"],
+        width=overview_layout["left_table"]["w"],
+        height=overview_layout["left_table"]["h"],
         headers=["Weekly Highlight", "Value", "Delta vs Prev"],
         rows=rows,
+        content_box=CONTENT_BOX,
+        max_cols=3,
         symbols=symbols,
         theme=theme,
     )
@@ -378,12 +645,14 @@ def _add_kpi_slide(
 
     _add_table(
         slide,
-        left=7.02,
-        top=3.25,
-        width=5.66,
-        height=2.95,
+        left=overview_layout["right_table"]["x"],
+        top=overview_layout["right_table"]["y"],
+        width=overview_layout["right_table"]["w"],
+        height=overview_layout["right_table"]["h"],
         headers=["Stage", "Family", "Backlog", "Approval"],
         rows=summary_rows,
+        content_box=CONTENT_BOX,
+        max_cols=4,
         symbols=symbols,
         theme=theme,
     )
@@ -405,8 +674,28 @@ def _add_weekly_signal_slide(
     release_chart = _render_release_chart(executive_payload.get("weekly_management", {}))
     signal_chart = _render_signal_alignment_chart(piece_payload)
 
-    slide.shapes.add_picture(release_chart, symbols["Inches"](0.62), symbols["Inches"](1.62), width=symbols["Inches"](6.25))
-    slide.shapes.add_picture(signal_chart, symbols["Inches"](6.95), symbols["Inches"](1.62), width=symbols["Inches"](6.1))
+    include_secondary_chart = True
+    trend_layout = _layout_trend(CONTENT_BOX, include_secondary_chart=include_secondary_chart)
+
+    main_chart_box = trend_layout["main_chart"]
+    secondary_chart_box = trend_layout["secondary_chart"]
+    assertInsideContentBox(main_chart_box, CONTENT_BOX)
+    assertInsideContentBox(secondary_chart_box, CONTENT_BOX)
+
+    _add_picture_clamped(
+        slide,
+        release_chart,
+        box=main_chart_box,
+        content_box=CONTENT_BOX,
+        symbols=symbols,
+    )
+    _add_picture_clamped(
+        slide,
+        signal_chart,
+        box=secondary_chart_box,
+        content_box=CONTENT_BOX,
+        symbols=symbols,
+    )
 
     kpis = piece_payload.get("kpis", {}) if isinstance(piece_payload.get("kpis"), dict) else {}
     weekly = executive_payload.get("weekly_management", {})
@@ -421,12 +710,14 @@ def _add_weekly_signal_slide(
 
     _add_table(
         slide,
-        left=0.62,
-        top=5.65,
-        width=5.85,
-        height=1.45,
+        left=trend_layout["bottom_table"]["x"],
+        top=trend_layout["bottom_table"]["y"],
+        width=trend_layout["bottom_table"]["w"],
+        height=trend_layout["bottom_table"]["h"],
         headers=["Weekly Metric", "Value"],
         rows=metric_rows,
+        content_box=CONTENT_BOX,
+        max_cols=2,
         symbols=symbols,
         theme=theme,
     )
@@ -490,49 +781,49 @@ def _add_risk_slide(
     if not exception_rows:
         exception_rows = [["-", "-", "-", "-"]]
 
+    risk_layout = _layout_risk(CONTENT_BOX)
+
     _add_table(
         slide,
-        left=0.62,
-        top=1.67,
-        width=4.15,
-        height=2.25,
+        left=risk_layout["top_left"]["x"],
+        top=risk_layout["top_left"]["y"],
+        width=risk_layout["top_left"]["w"],
+        height=risk_layout["top_left"]["h"],
         headers=["Stage", "Family", "Backlog", "Age w"],
         rows=backlog_rows,
+        content_box=CONTENT_BOX,
+        max_cols=4,
         symbols=symbols,
         theme=theme,
     )
 
     _add_table(
         slide,
-        left=4.92,
-        top=1.67,
-        width=3.62,
-        height=2.25,
+        left=risk_layout["top_right"]["x"],
+        top=risk_layout["top_right"]["y"],
+        width=risk_layout["top_right"]["w"],
+        height=risk_layout["top_right"]["h"],
         headers=["Stage", "Family", "Gap", "Approval"],
         rows=approval_rows,
+        content_box=CONTENT_BOX,
+        max_cols=4,
         symbols=symbols,
         theme=theme,
     )
 
     _add_table(
         slide,
-        left=8.67,
-        top=1.67,
-        width=4.52,
-        height=2.25,
+        left=risk_layout["bottom"]["x"],
+        top=risk_layout["bottom"]["y"],
+        width=risk_layout["bottom"]["w"],
+        height=risk_layout["bottom"]["h"],
         headers=["Severity", "Type", "Block", "Details"],
         rows=exception_rows,
+        content_box=CONTENT_BOX,
+        max_cols=4,
         symbols=symbols,
         theme=theme,
     )
-
-    signals = [str(s.get("key", "")).replace("_", " ").title() for s in _safe_list(executive_payload.get("risk_exception_summary", {}).get("signals", []))[:4]]
-    notes = "Signals: " + (", ".join(signals) if signals else "No additional board-level signals this cycle")
-    notes_box = slide.shapes.add_textbox(symbols["Inches"](0.62), symbols["Inches"](4.15), symbols["Inches"](12.5), symbols["Inches"](1.55))
-    tf = notes_box.text_frame
-    tf.text = notes
-    tf.paragraphs[0].font.size = symbols["Pt"](12)
-    tf.paragraphs[0].font.color.rgb = _rgb(symbols["RGBColor"], theme.slate)
 
 
 def _add_closing_slide(
@@ -574,7 +865,12 @@ def _add_closing_slide(
     if not lines:
         return
 
-    box = slide.shapes.add_textbox(symbols["Inches"](0.72), symbols["Inches"](1.9), symbols["Inches"](12.0), symbols["Inches"](4.8))
+    box = _add_textbox_clamped(
+        slide,
+        box=_box(CONTENT_BOX["x"], 1.9, CONTENT_BOX["w"], 4.8),
+        content_box=CONTENT_BOX,
+        symbols=symbols,
+    )
     tf = box.text_frame
     tf.text = lines[0]
     tf.paragraphs[0].font.size = symbols["Pt"](15)
