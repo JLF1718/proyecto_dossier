@@ -43,6 +43,12 @@ from dashboard.components.cards import (
     stagnant_groups_summary,
     weekly_management_cards,
 )
+from dashboard.components.executive_header import (
+    compute_executive_status,
+    executive_status_header,
+    generate_recommended_actions,
+    recommended_actions_block,
+)
 from dashboard.components.figures import (
     cumulative_approved_growth_figure,
     cumulative_released_weight_growth_figure,
@@ -180,6 +186,9 @@ def update_language_store(language_value: Optional[str]) -> Dict[str, str]:
     Output("export-banner-kicker", "children"),
     Output("export-banner-title", "children"),
     Output("export-banner-subtitle", "children"),
+    Output("section-exec-status", "children"),
+    Output("section-recommended-actions", "children"),
+    Output("section-top-backlog-risks", "children"),
     Output("section-executive-overview", "children"),
     Output("section-weekly-management", "children"),
     Output("section-physical-signal", "children"),
@@ -223,6 +232,9 @@ def update_static_labels(language_store: Optional[Dict[str, str]]):
         t(lang, "export.banner.kicker"),
         t(lang, "export.banner.title"),
         t(lang, "export.banner.subtitle"),
+        t(lang, "section.exec_status"),
+        t(lang, "section.recommended_actions"),
+        t(lang, "section.top_backlog_risks"),
         t(lang, "section.executive_overview"),
         t(lang, "section.weekly_management"),
         t(lang, "section.physical_signal"),
@@ -310,6 +322,8 @@ def update_presentation_mode(toggle_value: Optional[list[str]]) -> str:
     Output("weekly-accum-graph", "figure"),
     Output("executive-summary-table", "children"),
     Output("executive-report-pack", "children"),
+    Output("exec-status-header", "children"),
+    Output("recommended-actions-block", "children"),
     Input("language-store", "data"),
     Input("filter-contractor", "value"),
     Input("filter-discipline", "value"),
@@ -462,6 +476,18 @@ def update_dashboard(
         weekly_accumulated_progress_figure(local_filtered, lang=lang),
         summary_table,
         executive_report_pack(report_payload, lang=lang),
+        executive_status_header(
+            compute_executive_status(weekly_payload, kpi_payload),
+            lang=lang,
+        ),
+        recommended_actions_block(
+            generate_recommended_actions(
+                compute_executive_status(weekly_payload, kpi_payload),
+                weekly_payload,
+                kpi_payload,
+            ),
+            lang=lang,
+        ),
     )
 
 

@@ -344,78 +344,47 @@ def _management_table_card(
 
 
 def risk_exception_cards(payload: Dict[str, Any], lang: str = "en") -> html.Div:
+    """Render risk KPI cards.  Tables live in ``backlog_aging_summary`` /
+    ``stagnant_groups_summary`` which are placed in the dedicated mid-page
+    section.  This function intentionally returns only the four signal cards
+    so they can sit directly beneath the Executive Status header.
+    """
     risk = payload.get("risk_exception_summary", {})
     signals = {item.get("key"): item.get("value") for item in risk.get("signals", [])}
 
-    cards = dbc.Row(
-        [
-            _kpi_card(
-                t(lang, "kpi.max_age"),
-                _fmt_int(signals.get("oldest_backlog_age", 0)),
-                t(lang, "kpi.weeks_since_planned"),
-                "danger",
-                lg=3,
-            ),
-            _kpi_card(
-                t(lang, "kpi.stagnant_groups"),
-                _fmt_int(signals.get("stagnant_groups", 0)),
-                t(lang, "kpi.no_movement_groups"),
-                "danger",
-                lg=3,
-            ),
-            _kpi_card(
-                t(lang, "kpi.open_backlog"),
-                _fmt_int(signals.get("largest_open_backlog", 0)),
-                t(lang, "kpi.risk_attention_now"),
-                "warning",
-                lg=3,
-            ),
-            _kpi_card(
-                t(lang, "kpi.largest_approval_gap"),
-                _fmt_int(signals.get("largest_approval_gap", 0)),
-                t(lang, "kpi.top_risk_signals"),
-                "info",
-                lg=3,
-            ),
-        ]
-    )
-
-    oldest_table = _management_table_card(
-        risk.get("oldest_backlog_groups", [])[:5],
-        columns=[
-            (t(lang, "table.stage_type"), "stage_category"),
-            (t(lang, "table.building_family"), "building_family"),
-            (t(lang, "table.open_backlog"), "open_backlog"),
-            (t(lang, "table.oldest_ref_week"), "oldest_reference_week"),
-            (t(lang, "table.max_age_w"), "max_age_weeks"),
-        ],
-        title=t(lang, "report.top_backlog_risks"),
-        empty_message=t(lang, "empty.no_backlog_groups"),
-    )
-
-    gap_table = _management_table_card(
-        risk.get("largest_approval_gaps", [])[:5],
-        columns=[
-            (t(lang, "table.stage_type"), "stage_category"),
-            (t(lang, "table.building_family"), "building_family"),
-            (t(lang, "table.total_dossiers"), "total_dossiers"),
-            (t(lang, "table.approved"), "approved"),
-            (t(lang, "table.approval_gap"), "approval_gap"),
-        ],
-        title=t(lang, "kpi.largest_approval_gap"),
-        empty_message=t(lang, "empty.no_data_selected_filters"),
-    )
-
     return html.Div(
-        [
-            cards,
-            dbc.Row(
-                [
-                    dbc.Col(oldest_table, xs=12, lg=6, className="mb-3"),
-                    dbc.Col(gap_table, xs=12, lg=6, className="mb-3"),
-                ]
-            ),
-        ]
+        dbc.Row(
+            [
+                _kpi_card(
+                    t(lang, "kpi.max_age"),
+                    _fmt_int(signals.get("oldest_backlog_age", 0)),
+                    t(lang, "kpi.weeks_since_planned"),
+                    "danger",
+                    lg=3,
+                ),
+                _kpi_card(
+                    t(lang, "kpi.stagnant_groups"),
+                    _fmt_int(signals.get("stagnant_groups", 0)),
+                    t(lang, "kpi.no_movement_groups"),
+                    "danger",
+                    lg=3,
+                ),
+                _kpi_card(
+                    t(lang, "kpi.open_backlog"),
+                    _fmt_int(signals.get("largest_open_backlog", 0)),
+                    t(lang, "kpi.risk_attention_now"),
+                    "warning",
+                    lg=3,
+                ),
+                _kpi_card(
+                    t(lang, "kpi.largest_approval_gap"),
+                    _fmt_int(signals.get("largest_approval_gap", 0)),
+                    t(lang, "kpi.top_risk_signals"),
+                    "info",
+                    lg=3,
+                ),
+            ]
+        )
     )
 
 
@@ -589,8 +558,21 @@ def backlog_aging_summary(payload: Dict[str, Any], lang: str = "en") -> html.Div
         return html.Div([header_cards, table])
 
     table_df = pd.DataFrame(groups)
+
+    # Compute severity for each row: HIGH (≥15 wks), MEDIUM (≥10 wks), else normal
+    age_numeric = pd.to_numeric(table_df.get("max_age_weeks", pd.Series(dtype="float")), errors="coerce").fillna(0)
+
+    def _severity_label(age: float) -> str:
+        if age >= 15:
+            return "HIGH"
+        if age >= 10:
+            return "MEDIUM"
+        return "—"
+
+    severity_col = "Severity"
     display = pd.DataFrame(
         {
+            severity_col: age_numeric.apply(_severity_label),
             t(lang, "table.stage_type"): table_df["stage_category"].astype(str),
             t(lang, "table.building_family"): table_df["building_family"].astype(str),
             t(lang, "table.open_backlog"): table_df["open_backlog"].apply(_fmt_int),
@@ -623,6 +605,7 @@ def backlog_aging_summary(payload: Dict[str, Any], lang: str = "en") -> html.Div
                     "textAlign": "right",
                 },
                 style_cell_conditional=[
+                    {"if": {"column_id": severity_col}, "textAlign": "center", "fontWeight": "700", "fontSize": "10px", "minWidth": "70px"},
                     {"if": {"column_id": stage_col}, "textAlign": "left", "minWidth": "180px"},
                     {"if": {"column_id": family_col}, "textAlign": "left", "fontWeight": "600", "minWidth": "110px"},
                 ],
@@ -642,6 +625,24 @@ def backlog_aging_summary(payload: Dict[str, Any], lang: str = "en") -> html.Div
                 },
                 style_data_conditional=[
                     {"if": {"row_index": "odd"}, "backgroundColor": "#f8fbfd"},
+                    {
+                        "if": {"filter_query": f"{{{severity_col}}} = 'HIGH'"},
+                        "backgroundColor": "#fff5f5",
+                        "borderLeft": "3px solid #dc2626",
+                    },
+                    {
+                        "if": {"filter_query": f"{{{severity_col}}} = 'HIGH'", "column_id": severity_col},
+                        "color": "#dc2626",
+                    },
+                    {
+                        "if": {"filter_query": f"{{{severity_col}}} = 'MEDIUM'"},
+                        "backgroundColor": "#fffbeb",
+                        "borderLeft": "3px solid #d97706",
+                    },
+                    {
+                        "if": {"filter_query": f"{{{severity_col}}} = 'MEDIUM'", "column_id": severity_col},
+                        "color": "#d97706",
+                    },
                 ],
             )
         ),
