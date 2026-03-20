@@ -63,3 +63,4 @@ logs/
 
 config.yaml
 .runtime/
+database/qa_platform.db
