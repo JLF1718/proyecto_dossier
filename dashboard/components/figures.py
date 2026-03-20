@@ -139,6 +139,31 @@ def _status_label(lang: str, status: str) -> str:
     return t(lang, f"status.{status}")
 
 
+def _stacked_bar_layout(title_text: str, legend_title: str) -> Dict[str, Any]:
+    """Shared layout for stacked bar charts with safe title/legend spacing."""
+    return {
+        "template": "plotly_white",
+        "barmode": "stack",
+        "title": {
+            "text": title_text,
+            "x": 0.01,
+            "y": 0.97,
+            "yanchor": "top",
+        },
+        "legend_title": legend_title,
+        "margin": {"l": 12, "r": 12, "t": 92, "b": 26},
+        "legend": {
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.02,
+            "xanchor": "left",
+            "x": 0.0,
+        },
+        # Keep chart responsive in the Dash grid; PNG size is controlled by toImage config.
+        "autosize": True,
+    }
+
+
 def empty_figure(title: str, message: str) -> go.Figure:
     fig = go.Figure()
     fig.update_layout(
@@ -274,15 +299,12 @@ def status_by_stage_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
             )
         )
     fig.update_layout(
-        template="plotly_white",
-        barmode="stack",
-        title=t(lang, "figure.status_by_stage.title"),
+        **_stacked_bar_layout(
+            title_text=t(lang, "figure.status_by_stage.title"),
+            legend_title=t(lang, "figure.status_by_stage.legend"),
+        ),
         xaxis_title=t(lang, "figure.status_by_stage.x"),
         yaxis_title=t(lang, "figure.status_by_stage.y"),
-        legend_title=t(lang, "figure.status_by_stage.legend"),
-        margin={"l": 12, "r": 12, "t": 64, "b": 26},
-        title_x=0.01,
-        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0.0},
     )
     return fig
 
@@ -319,15 +341,12 @@ def status_by_block_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
             )
         )
     fig.update_layout(
-        template="plotly_white",
-        barmode="stack",
-        title=t(lang, "figure.status_by_family.title"),
+        **_stacked_bar_layout(
+            title_text=t(lang, "figure.status_by_family.title"),
+            legend_title=t(lang, "figure.status_by_family.legend"),
+        ),
         xaxis_title=t(lang, "figure.status_by_family.x"),
         yaxis_title=t(lang, "figure.status_by_family.y"),
-        legend_title=t(lang, "figure.status_by_family.legend"),
-        margin={"l": 12, "r": 12, "t": 64, "b": 26},
-        title_x=0.01,
-        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0.0},
     )
     return fig
 
@@ -363,20 +382,29 @@ def weekly_progress_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
                 y=grouped[status],
                 marker_color=_STATUS_COLORS[status],
                 text=grouped[status].where(grouped[status] > 0).astype("Int64").astype(str).replace("<NA>", ""),
-                textposition="inside",
+                textposition="auto",
+                insidetextfont={"size": 12, "color": "#ffffff"},
+                outsidetextfont={"size": 12, "color": "#1f2937"},
+                cliponaxis=False,
             )
         )
     fig.update_layout(
         template="plotly_white",
         barmode="group",
-        title=t(lang, "figure.weekly_status.title"),
+        title={
+            "text": t(lang, "figure.weekly_status.title"),
+            "x": 0.01,
+            "y": 0.97,
+            "yanchor": "top",
+        },
         xaxis_title=t(lang, "figure.weekly_status.x"),
         yaxis_title=t(lang, "figure.weekly_status.y"),
-        legend_title=t(lang, "figure.weekly_status.legend"),
-        margin={"l": 12, "r": 12, "t": 64, "b": 56},
-        title_x=0.01,
-        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0.0},
-        xaxis_tickangle=-45,
+        margin={"l": 12, "r": 12, "t": 92, "b": 124},
+        legend={"orientation": "h", "yanchor": "top", "y": -0.26, "xanchor": "center", "x": 0.5},
+        uniformtext_minsize=11,
+        uniformtext_mode="hide",
+        xaxis={"tickangle": -45, "tickfont": {"size": 11}},
+        yaxis={"tickfont": {"size": 11}},
     )
     return fig
 
@@ -432,14 +460,19 @@ def weekly_accumulated_progress_figure(df: pd.DataFrame, lang: str = "en") -> go
     )
     fig.update_layout(
         template="plotly_white",
-        title=t(lang, "figure.weekly_accum.title"),
+        title={
+            "text": t(lang, "figure.weekly_accum.title"),
+            "x": 0.01,
+            "y": 0.97,
+            "yanchor": "top",
+        },
         xaxis_title=t(lang, "figure.weekly_accum.x"),
         yaxis_title=t(lang, "figure.weekly_accum.y"),
         yaxis_range=[0, 105],
-        margin={"l": 12, "r": 12, "t": 64, "b": 40},
-        legend_title=t(lang, "figure.weekly_accum.legend"),
-        title_x=0.01,
-        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0.0},
+        margin={"l": 12, "r": 12, "t": 92, "b": 94},
+        legend={"orientation": "h", "yanchor": "top", "y": -0.2, "xanchor": "center", "x": 0.5},
+        xaxis={"tickfont": {"size": 11}},
+        yaxis={"range": [0, 105], "tickfont": {"size": 11}},
     )
     return fig
 
