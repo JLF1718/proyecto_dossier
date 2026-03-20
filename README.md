@@ -22,20 +22,166 @@ No se cargan contratistas alternos ni loaders legacy para el flujo activo.
 - Soporte EN/ES en pantalla y en export mode.
 - Branding oficial INPROS.
 
-## Arranque rapido
+## Como echar a volar el proyecto
+
+### Requisitos previos
+
+- Python 3.10+.
+- `pip` y `venv` disponibles en tu equipo.
+- Puertos locales libres: `8000` para FastAPI y `8050` para Dash.
+
+### Preparacion inicial
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
+pip install --upgrade pip
 pip install -r requirements.txt
+cp .env.example .env
 make db-init
+```
+
+Configuracion base en `.env`:
+
+- `FASTAPI_PORT=8000`
+- `DASH_PORT=8050`
+- `QA_API_BASE=http://127.0.0.1:8000`
+
+Si no necesitas cambiar puertos ni rutas, puedes dejar `.env` tal como viene del ejemplo.
+
+### Opcion 1: desarrollo local interactivo
+
+Levanta backend y dashboard en la misma terminal:
+
+```bash
 make dev
 ```
+
+Equivale a ejecutar:
+
+```bash
+bash run_dev.sh
+```
+
+Que hace este modo:
+
+- Inicializa la base SQLite si hace falta.
+- Levanta FastAPI en segundo plano.
+- Levanta Dash y deja la terminal ocupada.
+- Al cerrar con `Ctrl+C`, apaga ambos procesos.
 
 Servicios locales:
 
 - Backend: `http://localhost:8000/api/docs`
 - Dashboard: `http://localhost:8050`
+- Healthcheck API: `http://localhost:8000/api/health`
+
+### Opcion 2: arranque desacoplado con logs y PID files
+
+Si quieres dejar la plataforma corriendo y liberar la terminal:
+
+```bash
+make qa-start
+```
+
+Equivale a:
+
+```bash
+bash run_qa_platform.sh
+```
+
+Este flujo:
+
+- Activa `.venv` automaticamente si existe en el proyecto.
+- Arranca backend y dashboard con `nohup`.
+- Guarda logs y PID files en `.runtime/`.
+- Espera a que ambos servicios respondan antes de dar el arranque por bueno.
+
+Para detenerlo:
+
+```bash
+make qa-stop
+```
+
+Equivale a:
+
+```bash
+bash stop_qa_platform.sh
+```
+
+Logs utiles:
+
+- Backend: `.runtime/backend.log`
+- Dashboard: `.runtime/dashboard.log`
+
+### Verificacion rapida
+
+Con la plataforma arriba, valida asi:
+
+```bash
+curl -f http://127.0.0.1:8000/api/health
+curl -I http://127.0.0.1:8050
+```
+
+Si todo esta bien, abre:
+
+- Dashboard: `http://127.0.0.1:8050`
+- Swagger / OpenAPI: `http://127.0.0.1:8000/api/docs`
+
+## Exponer el dashboard con Cloudflare Quick Tunnel
+
+Quick Tunnel sirve para pruebas y demos, no para produccion.
+
+### 1. Instala `cloudflared`
+
+Verifica primero si ya lo tienes:
+
+```bash
+cloudflared --version
+```
+
+Si no esta instalado, usa la guia oficial de Cloudflare para Linux:
+
+- Package repository / binarios: https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/downloads/
+
+### 2. Levanta la plataforma localmente
+
+La forma mas estable para compartirla suele ser:
+
+```bash
+make qa-start
+```
+
+### 3. Abre el tunel publico
+
+En otra terminal, publica el dashboard Dash en `8050`:
+
+```bash
+cloudflared tunnel --url http://localhost:8050
+```
+
+`cloudflared` va a imprimir una URL publica parecida a:
+
+- `https://algo-unico.trycloudflare.com`
+
+Comparte esa URL para que otros vean el dashboard.
+
+### 4. Consideraciones importantes
+
+- Deja abierta la terminal donde corre `cloudflared`; si la cierras, el enlace deja de funcionar.
+- El backend FastAPI sigue corriendo localmente en `8000`; el dashboard lo consume internamente a traves de `QA_API_BASE`, por eso basta con exponer `8050`.
+- Si `cloudflared` falla porque ya existe una configuracion local en `~/.cloudflared/config.yml`, renombrala temporalmente y vuelve a intentar el Quick Tunnel.
+- Quick Tunnel tiene limites de uso y no tiene SLA; para algo permanente usa un Cloudflare Tunnel administrado o un proxy formal con dominio propio.
+
+### 5. Cerrar todo
+
+Primero detiene el tunel con `Ctrl+C` en la terminal de `cloudflared`.
+
+Luego apaga la plataforma:
+
+```bash
+make qa-stop
+```
 
 ## Operacion diaria (closeout)
 
