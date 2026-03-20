@@ -1,0 +1,8 @@
+repos:
+  - repo: local
+    hooks:
+      - id: csv-guard-validate
+        name: csv guard validate
+        entry: python tools/csv_guard.py validate --csv data/baysa_dossier_clean.csv --schema data/schema.json
+        language: system
+        pass_filenames: false
