@@ -70,3 +70,11 @@ data/processed/
 data/raw/
 data/historico/
 data/contratistas/
+
+cat >> .gitignore <<'EOF'
+
+# allow patch template (track only this file)
+!data/
+!data/patches/
+!data/patches/patch.csv
+EOF
