@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────
 #  Makefile — QA Platform development tasks
 # ─────────────────────────────────────────────────────────────
-.PHONY: help install dev api dash db-init test lint clean snapshot audit-kpis inspect-management smoke qa-start qa-stop validate apply
+.PHONY: help install dev api dash db-init test lint clean snapshot audit-kpis inspect-management smoke qa-start qa-stop validate apply edit
 
 PYTHON ?= python3
 PIP    ?= pip3
@@ -75,3 +75,6 @@ validate:
 
 apply:
 	$(PYTHON) tools/csv_guard.py apply --csv data/processed/baysa_dossiers_clean.csv --schema data/schema.json --patch data/patches/patch.csv
+
+edit:
+	$(PYTHON) tools/csv_edit.py

@@ -210,6 +210,19 @@ def detectar_columna_bloque(df: pd.DataFrame, columnas_posibles: List[str]) -> O
             return col
     return None
 
+
+def _normalize_status_value(value: object) -> str:
+    return str(value).strip().lower().replace('-', '_').replace(' ', '_')
+
+
+def _status_color(status: object, colores: Dict[str, str]) -> str:
+    normalized = _normalize_status_value(status)
+    if normalized == 'approved':
+        return colores.get('approved', colores.get('LIBERADO', '#4CAF50'))
+    if normalized in {'pending', 'in_review'}:
+        return colores.get('pending', colores.get('PLANEADO', '#F4B400'))
+    return colores.get(str(status), '#999999')
+
 def preparar_bloques_revision(df: pd.DataFrame, top_n: int = 15,
                              colores_estatus: Dict[str, str] = None,
                              in_review_statuses: List[str] = None) -> pd.DataFrame:
@@ -223,10 +236,13 @@ def preparar_bloques_revision(df: pd.DataFrame, top_n: int = 15,
     """
 
     if in_review_statuses is None:
-        in_review_statuses = ['OBSERVADO', 'EN_REVISIÓN']
+        in_review_statuses = ['pending', 'in_review']
+
+    normalized_review = {_normalize_status_value(status) for status in in_review_statuses}
+    estatus_normalized = df['ESTATUS'].map(_normalize_status_value)
 
     bloques = df[
-        (df['ESTATUS'].isin(in_review_statuses)) &
+        (estatus_normalized.isin(normalized_review)) &
         (df['NO_REVISIONES_REALIZADAS'] > 0)
     ].copy()
     
@@ -251,7 +267,7 @@ def preparar_bloques_revision(df: pd.DataFrame, top_n: int = 15,
         bloques
         .sort_values('NO_REVISIONES_REALIZADAS', ascending=False)
         .head(top_n)
-        .assign(COLOR=lambda x: x['ESTATUS'].map(colores_estatus))
+        .assign(COLOR=lambda x: x['ESTATUS'].map(lambda st: _status_color(st, colores_estatus or {})))
         .reset_index(drop=True)
     )
 
@@ -356,11 +372,11 @@ def generar_dashboard(mej: pd.DataFrame, config: Dict, semana_corte: str = "S186
         mej,
         config['dashboard']['top_bloques'],
         config['colores'],
-        config['dashboard'].get('in_review_statuses', ['OBSERVADO', 'EN_REVISIÓN'])
+        config['dashboard'].get('in_review_statuses', ['pending', 'in_review'])
     )
     
     # Preparar colores
-    colores_grafico = [config['colores'].get(estatus, '#999999') for estatus in df_estatus['ESTATUS']]
+    colores_grafico = [_status_color(estatus, config['colores']) for estatus in df_estatus['ESTATUS']]
     
     # Crear estructura
     fig = make_subplots(

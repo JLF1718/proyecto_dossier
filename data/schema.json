@@ -26,7 +26,7 @@
     "estatus": [
       "approved",
       "pending",
-      "rejected"
+      "in_review"
     ]
   },
   "rules": {

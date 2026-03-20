@@ -37,7 +37,7 @@ SCHEMA = {
         "semana_liberacion_dossier": "Int64",
         "in_contract_scope_bool": "boolean",
     },
-    "allowed": {"estatus": ["approved", "pending", "rejected"]},
+    "allowed": {"estatus": ["approved", "pending", "in_review"]},
     "rules": {"numero_blank_sets_in_contract_scope_bool_false": True},
 }
 
@@ -100,7 +100,7 @@ def test_validate_fails_on_bad_dtype(tmp_path: Path, schema_file: Path) -> None:
 
 def test_validate_fails_on_invalid_estatus(tmp_path: Path, schema_file: Path) -> None:
     csv_path = tmp_path / "data.csv"
-    _write_csv(csv_path, [_base_row(estatus="in_review")])
+    _write_csv(csv_path, [_base_row(estatus="observado")])
 
     with pytest.raises(GuardError, match="invalid value"):
         validate_csv(csv_path, schema_file)
