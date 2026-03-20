@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────
 #  Makefile — QA Platform development tasks
 # ─────────────────────────────────────────────────────────────
-.PHONY: help install dev api dash db-init test lint clean snapshot audit-kpis inspect-management smoke qa-start qa-stop
+.PHONY: help install dev api dash db-init test lint clean snapshot audit-kpis inspect-management smoke qa-start qa-stop validate apply
 
 PYTHON ?= python3
 PIP    ?= pip3
@@ -69,3 +69,9 @@ clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	find . -name "*.pyc" -delete
 	@echo "Clean complete."
+
+validate:
+	$(PYTHON) tools/csv_guard.py validate --csv data/processed/baysa_dossiers_clean.csv --schema data/schema.json
+
+apply:
+	$(PYTHON) tools/csv_guard.py apply --csv data/processed/baysa_dossiers_clean.csv --schema data/schema.json --patch data/patches/patch.csv

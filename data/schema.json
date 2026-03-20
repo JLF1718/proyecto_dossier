@@ -1,0 +1,36 @@
+{
+  "key": [
+    "contractor",
+    "bloque"
+  ],
+  "required": [
+    "contractor",
+    "numero",
+    "bloque"
+  ],
+  "dtypes": {
+    "contractor": "string",
+    "numero": "string",
+    "fase": "Int64",
+    "etapa": "Int64",
+    "hito_semana": "Int64",
+    "bloque": "string",
+    "peso_bloque_kg": "float64",
+    "peso_dossier_kg": "float64",
+    "total_piezas": "Int64",
+    "estatus": "string",
+    "semana_liberacion_dossier": "Int64",
+    "in_contract_scope": "boolean"
+  },
+  "allowed": {
+    "estatus": [
+      "approved",
+      "pending",
+      "rejected"
+    ]
+  },
+  "rules": {
+    "numero_blank_sets_in_contract_scope_bool_false": false
+  }
+}
+

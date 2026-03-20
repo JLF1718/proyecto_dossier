@@ -64,3 +64,9 @@ logs/
 config.yaml
 .runtime/
 database/qa_platform.db
+
+# data outputs / raw data (do not commit)
+data/processed/
+data/raw/
+data/historico/
+data/contratistas/
