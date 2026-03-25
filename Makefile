@@ -77,4 +77,4 @@ apply:
 	$(PYTHON) tools/csv_guard.py apply --csv data/processed/baysa_dossiers_clean.csv --schema data/schema.json --patch data/patches/patch.csv
 
 edit:
-	$(PYTHON) tools/csv_edit.py
+	$(PYTHON) -m tools.csv_edit
