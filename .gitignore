@@ -64,6 +64,8 @@ logs/
 config.yaml
 .runtime/
 database/qa_platform.db
+.env
+2230 Aeropuerto PVR E4 - Programacion y Presupuesto.xlsx
 
 # data outputs / raw data (do not commit)
 data/processed/
@@ -71,10 +73,7 @@ data/raw/
 data/historico/
 data/contratistas/
 
-cat >> .gitignore <<'EOF'
-
 # allow patch template (track only this file)
 !data/
 !data/patches/
 !data/patches/patch.csv
-EOF
