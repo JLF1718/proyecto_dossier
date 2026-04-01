@@ -372,15 +372,38 @@ def _section_visibility_styles(scope_view: Optional[str]) -> list[Dict[str, str]
         "section-wrap-quality-signals",
     ]
 
-    if scope == "new_contract":
-        visible = {
+    visibility_profiles = {
+        "original": {
             "section-wrap-exec-status",
+            "section-wrap-risk-exceptions",
+            "section-wrap-recommended-actions",
+            "section-wrap-top-backlog-risks",
             "section-wrap-executive-overview",
             "section-wrap-weekly-management",
+            "section-wrap-historical-comparison",
+            "section-wrap-dossier-analysis",
+            "section-wrap-executive-report-pack",
+            "section-wrap-executive-summary",
+            "section-wrap-quality-signals",
+        },
+        "reduced": {
+            "section-wrap-exec-status",
+            "section-wrap-risk-exceptions",
+            "section-wrap-recommended-actions",
+            "section-wrap-top-backlog-risks",
+            "section-wrap-executive-overview",
+            "section-wrap-weekly-management",
+            "section-wrap-dossier-analysis",
+            "section-wrap-executive-summary",
+        },
+        "new_contract": {
+            "section-wrap-exec-status",
+            "section-wrap-executive-overview",
             "section-wrap-new-contract",
-        }
-    else:
-        visible = set(section_ids) - {"section-wrap-new-contract"}
+        },
+    }
+
+    visible = visibility_profiles.get(scope, visibility_profiles["reduced"])
 
     return [{} if section_id in visible else {"display": "none"} for section_id in section_ids]
 
