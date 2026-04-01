@@ -431,8 +431,7 @@ def weekly_progress_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
                 y=grouped[status],
                 marker_color=_STATUS_COLORS[status],
                 text=grouped[status].where(grouped[status] > 0).astype("Int64").astype(str).replace("<NA>", ""),
-                textposition="auto",
-                insidetextfont={"size": 12, "color": "#ffffff"},
+                textposition="outside",
                 outsidetextfont={"size": 12, "color": "#1f2937"},
                 cliponaxis=False,
             )
@@ -450,8 +449,6 @@ def weekly_progress_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
         yaxis_title=t(lang, "figure.weekly_status.y"),
         margin={"l": 12, "r": 12, "t": 92, "b": 124},
         legend={"orientation": "h", "yanchor": "top", "y": -0.26, "xanchor": "center", "x": 0.5},
-        uniformtext_minsize=11,
-        uniformtext_mode="hide",
         xaxis={"tickangle": -45, "tickfont": {"size": 11}},
         yaxis={"tickfont": {"size": 11}},
     )
@@ -847,12 +844,11 @@ def new_contract_progress_figure(blocks: list[Dict[str, Any]], lang: str = "en")
         name=t(lang, "nc.legend.liberado"),
         y=names, x=lib, orientation="h",
         marker_color="#2e8540",
-        text=[f"{v:.1f}%" if v > 5 else "" for v in lib],
-        textposition="auto",
+        text=[f"{v:.1f}%" if v >= 8 else "" for v in lib],
+        textposition="inside",
+        insidetextanchor="middle",
         insidetextfont={"color": "#fff", "size": 11},
-        outsidetextfont={"color": "#1f2937", "size": 11},
-        cliponaxis=False,
-        constraintext="none",
+        constraintext="both",
         hovertemplate="%{y}: %{x:.1f}% liberado<extra></extra>",
     ))
     # 2. Soldado but not released (blue)
@@ -860,12 +856,11 @@ def new_contract_progress_figure(blocks: list[Dict[str, Any]], lang: str = "en")
         name=t(lang, "nc.legend.soldado"),
         y=names, x=sold, orientation="h",
         marker_color="#2d6fb7",
-        text=[f"{v:.1f}%" if v > 5 else "" for v in sold],
-        textposition="auto",
+        text=[f"{v:.1f}%" if v >= 8 else "" for v in sold],
+        textposition="inside",
+        insidetextanchor="middle",
         insidetextfont={"color": "#fff", "size": 11},
-        outsidetextfont={"color": "#1f2937", "size": 11},
-        cliponaxis=False,
-        constraintext="none",
+        constraintext="both",
         hovertemplate="%{y}: %{x:.1f}% soldado (no liberado)<extra></extra>",
     ))
     # 3. Assembled but not welded (light blue-gray)
@@ -873,12 +868,11 @@ def new_contract_progress_figure(blocks: list[Dict[str, Any]], lang: str = "en")
         name=t(lang, "nc.legend.montado"),
         y=names, x=mont, orientation="h",
         marker_color="#9db4c7",
-        text=[f"{v:.1f}%" if v > 5 else "" for v in mont],
-        textposition="auto",
+        text=[f"{v:.1f}%" if v >= 8 else "" for v in mont],
+        textposition="inside",
+        insidetextanchor="middle",
         insidetextfont={"color": "#333", "size": 11},
-        outsidetextfont={"color": "#1f2937", "size": 11},
-        cliponaxis=False,
-        constraintext="none",
+        constraintext="both",
         hovertemplate="%{y}: %{x:.1f}% montado (no soldado)<extra></extra>",
     ))
     # 4. Assembly pending (very light gray)
@@ -887,12 +881,11 @@ def new_contract_progress_figure(blocks: list[Dict[str, Any]], lang: str = "en")
         y=names, x=pend, orientation="h",
         marker_color="#e8edf2",
         marker_line={"color": "#c8d4de", "width": 0.5},
-        text=[f"{v:.1f}%" if v > 5 else "" for v in pend],
-        textposition="auto",
+        text=[f"{v:.1f}%" if v >= 8 else "" for v in pend],
+        textposition="inside",
+        insidetextanchor="middle",
         insidetextfont={"color": "#999", "size": 10},
-        outsidetextfont={"color": "#1f2937", "size": 10},
-        cliponaxis=False,
-        constraintext="none",
+        constraintext="both",
         hovertemplate="%{y}: %{x:.1f}% pendiente montaje<extra></extra>",
     ))
 
@@ -932,17 +925,17 @@ def new_contract_progress_figure(blocks: list[Dict[str, Any]], lang: str = "en")
             "x": 0.0,
             "font": {"size": 10},
         },
-        margin={"l": 12, "r": 12, "t": 90, "b": 36},
+        margin={"l": 12, "r": 12, "t": 90, "b": 52},
         uniformtext_minsize=10,
         uniformtext_mode="hide",
     )
     # Add footnote AFTER update_layout so it appends rather than replaces
     # the commitment-date annotations already added in the loop above.
     fig.add_annotation(
-        x=1.0, y=-0.06,
+        x=0.0, y=-0.1,
         xref="paper", yref="paper",
         text=t(lang, "figure.nc_progress.note"),
-        showarrow=False, xanchor="right",
+        showarrow=False, xanchor="left",
         font={"size": 9, "color": "#888"},
     )
     return fig
