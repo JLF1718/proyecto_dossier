@@ -294,9 +294,11 @@ def status_by_stage_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
     stage_labels = [stage_label(stage, lang) for stage in grouped.index.tolist()]
 
     totals_stage = grouped.sum(axis=1)
+    # Adaptive threshold: 5% for small stacks (≤10 dossiers), 8% for larger stacks
+    threshold_stage = totals_stage.apply(lambda t: 0.05 if t <= 10 else 0.08)
     fig = go.Figure()
     for status in ("approved", "pending", "in_review"):
-        min_count = (totals_stage * 0.08).clip(lower=1)
+        min_count = (totals_stage * threshold_stage).clip(lower=1)
         pct = (grouped[status] / totals_stage.where(totals_stage > 0) * 100).fillna(0.0)
         label = _status_label(lang, status)
         customdata = [
@@ -313,6 +315,7 @@ def status_by_stage_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
                 textposition="inside",
                 insidetextanchor="middle",
                 insidetextfont={"size": 12, "color": "#ffffff"},
+                textangle=0,
                 cliponaxis=True,
                 constraintext="both",
                 customdata=customdata,
@@ -330,7 +333,7 @@ def status_by_stage_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
             "automargin": True,
         },
         yaxis_title=t(lang, "figure.status_by_stage.y"),
-        uniformtext_minsize=10,
+        uniformtext_minsize=8,
         uniformtext_mode="hide",
     )
     # Increase bottom margin to prevent rotated label cutoff
@@ -360,9 +363,11 @@ def status_by_block_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
     grouped = grouped.reindex(_FAMILY_ORDER, fill_value=0)
 
     totals_family = grouped.sum(axis=1)
+    # Adaptive threshold: 5% for small stacks (≤10 dossiers), 8% for larger stacks
+    threshold_family = totals_family.apply(lambda t: 0.05 if t <= 10 else 0.08)
     fig = go.Figure()
     for status in ("approved", "pending", "in_review"):
-        min_count = (totals_family * 0.08).clip(lower=1)
+        min_count = (totals_family * threshold_family).clip(lower=1)
         pct = (grouped[status] / totals_family.where(totals_family > 0) * 100).fillna(0.0)
         label = _status_label(lang, status)
         customdata = [
@@ -379,6 +384,7 @@ def status_by_block_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
                 textposition="inside",
                 insidetextanchor="middle",
                 insidetextfont={"size": 12, "color": "#ffffff"},
+                textangle=0,
                 cliponaxis=True,
                 constraintext="both",
                 customdata=customdata,
@@ -392,7 +398,7 @@ def status_by_block_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
         ),
         xaxis_title=t(lang, "figure.status_by_family.x"),
         yaxis_title=t(lang, "figure.status_by_family.y"),
-        uniformtext_minsize=10,
+        uniformtext_minsize=8,
         uniformtext_mode="hide",
     )
     return fig
