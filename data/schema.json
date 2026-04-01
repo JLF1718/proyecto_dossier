@@ -25,9 +25,11 @@
   },
   "allowed": {
     "estatus": [
+      "ATENCIÓN COMENTARIOS",
+      "LIBERADO",
       "approved",
-      "pending",
-      "in_review"
+      "in_review",
+      "pending"
     ],
     "contract_group": [
       "original",
@@ -38,4 +40,3 @@
     "numero_blank_sets_in_contract_scope_bool_false": false
   }
 }
-

@@ -77,3 +77,4 @@ data/contratistas/
 !data/
 !data/patches/
 !data/patches/patch.csv
+!data/status_change_log.csv
