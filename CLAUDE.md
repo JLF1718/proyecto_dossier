@@ -119,3 +119,34 @@ Snapshots are persisted to SQLite `weekly_snapshots` table on demand (`make snap
 ### Runtime Artifacts
 
 `.runtime/` holds ephemeral PID files and logs for `make qa-start` / `make qa-stop`. Do not commit files from this directory.
+
+## Known Issues & Fixes
+
+### Stacked bar label rendering (figures.py)
+**Date resolved:** 2026-04-01
+**Affected functions:** `status_by_stage_figure`, `status_by_block_figure`
+
+| Issue | Root cause | Fix |
+|---|---|---|
+| Labels escape above bar when stack near 100% | `textposition="auto"` + `cliponaxis=False` | `textposition="inside"` + `cliponaxis=True` + `uniformtext_mode="hide"` |
+| Labels cram into narrow segments | `constraintext="none"` overrides layout hide rule | `constraintext="both"` + 8% data-level guard |
+| Text cut mid-character / misaligned | No `insidetextanchor`, clip boundary drift | `insidetextanchor="middle"` + `constraintext="both"` |
+
+**Rule going forward:** Never use `textposition="auto"` or `constraintext="none"` in stacked bar traces. Always pair `uniformtext_mode="hide"` with `constraintext="both"`.
+
+### Dashboard UX & Performance — Batch 2 (commit e124caf)
+
+| Priority | Change | File |
+|---|---|---|
+| P1 | Empty state guard: "Sin datos para el filtro seleccionado" | figures.py:276, :327 |
+| P2 | Color fix: snapshot_approval_trend_figure aligned to _STATUS_COLORS | figures.py:688 |
+| P3 | Stage axis: tickangle=-35, automargin=True, bottom margin 26→80 | figures.py:307 |
+| P4 | Rich tooltips: Status / Dossiers / % del total | figures.py:293, :343 |
+| P5 | _classify_status vectorized with np.select() | figures.py:38 |
+| P6 | Callback memoization: 30s TTL, invalidates on CSV mtime change | dossier_callbacks.py |
+| Bonus | _historical_frame: isinstance(payload, dict) guard | figures.py |
+
+**Rules going forward:**
+- Always test empty dataframe edge case when adding new figure functions
+- Status colors must reference _STATUS_COLORS dict — never hardcode hex values
+- New callbacks that read CSV must use the memoization pattern from _fetch_dossiers
