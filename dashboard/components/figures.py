@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
@@ -30,20 +31,24 @@ _FAMILY_ORDER = ["PRO", "SUE", "SHARED"]
 
 
 def _classify_status(series: pd.Series) -> pd.Series:
-    """Map raw estatus values to the canonical three-way classification."""
-    _APPROVED = {"approved", "liberado", "aprobado", "aceptado"}
-    _IN_REVIEW = {"in_review", "in review", "en_revisión", "en revisión",
-                  "revisión inpros", "en revision inpros", "en_revision_inpros"}
+    """Map raw estatus values to the canonical three-way classification (vectorized)."""
+    _APPROVED = frozenset({"approved", "liberado", "aprobado", "aceptado"})
+    _IN_REVIEW = frozenset({"in_review", "in review", "en_revisión", "en revisión",
+                            "revisión inpros", "en revision inpros", "en_revision_inpros"})
 
-    def _map(v: str) -> str:
-        v = str(v).strip().lower().replace("_", " ")
-        if v in _APPROVED:
-            return "approved"
-        if v in _IN_REVIEW:
-            return "in_review"
-        return "pending"
-
-    return series.fillna("pending").astype(str).apply(_map)
+    normalized = (
+        series.fillna("pending").astype(str)
+        .str.strip().str.lower().str.replace("_", " ", regex=False)
+    )
+    return pd.Series(
+        np.select(
+            [normalized.isin(_APPROVED), normalized.isin(_IN_REVIEW)],
+            ["approved", "in_review"],
+            default="pending",
+        ),
+        index=series.index,
+        dtype="object",
+    )
 
 
 def _normalize_bloque(series: pd.Series) -> pd.Series:
@@ -268,12 +273,14 @@ def welding_figure(metrics: Dict[str, Any]) -> go.Figure:
 def status_by_stage_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
     """Stacked bar: dossier counts by business stage / dossier type."""
     if df.empty or "etapa" not in df.columns or "estatus" not in df.columns:
-        return empty_figure(t(lang, "figure.status_by_stage.title"), t(lang, "figure.no_data"))
+        return empty_figure(t(lang, "figure.status_by_stage.title"), "Sin datos para el filtro seleccionado")
 
     work = df.copy()
     work["status"] = _classify_status(work["estatus"])
     work["stage_category"] = derive_stage_category(work)
     work = work[work["stage_category"].isin(_STAGE_ORDER)]
+    if work.empty:
+        return empty_figure(t(lang, "figure.status_by_stage.title"), "Sin datos para el filtro seleccionado")
 
     grouped = (
         work.groupby(["stage_category", "status"])
@@ -286,20 +293,30 @@ def status_by_stage_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
     grouped = grouped.reindex(_STAGE_ORDER, fill_value=0)
     stage_labels = [stage_label(stage, lang) for stage in grouped.index.tolist()]
 
+    totals_stage = grouped.sum(axis=1)
     fig = go.Figure()
     for status in ("approved", "pending", "in_review"):
+        min_count = (totals_stage * 0.08).clip(lower=1)
+        pct = (grouped[status] / totals_stage.where(totals_stage > 0) * 100).fillna(0.0)
+        label = _status_label(lang, status)
+        customdata = [
+            [label, int(cnt), round(float(p), 1)]
+            for cnt, p in zip(grouped[status].tolist(), pct.tolist())
+        ]
         fig.add_trace(
             go.Bar(
-                name=_status_label(lang, status),
+                name=label,
                 x=stage_labels,
                 y=grouped[status],
                 marker_color=_STATUS_COLORS[status],
-                text=grouped[status].where(grouped[status] > 0).astype("Int64").astype(str).replace("<NA>", ""),
-                textposition="auto",
+                text=grouped[status].where(grouped[status] >= min_count).astype("Int64").astype(str).replace("<NA>", ""),
+                textposition="inside",
+                insidetextanchor="middle",
                 insidetextfont={"size": 12, "color": "#ffffff"},
-                outsidetextfont={"size": 12, "color": "#1f2937"},
-                cliponaxis=False,
-                constraintext="none",
+                cliponaxis=True,
+                constraintext="both",
+                customdata=customdata,
+                hovertemplate="<b>%{customdata[0]}</b><br>Dossiers: %{customdata[1]}<br>% del total: %{customdata[2]:.1f}%<extra></extra>",
             )
         )
     fig.update_layout(
@@ -307,22 +324,30 @@ def status_by_stage_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
             title_text=t(lang, "figure.status_by_stage.title"),
             legend_title=t(lang, "figure.status_by_stage.legend"),
         ),
-        xaxis_title=t(lang, "figure.status_by_stage.x"),
+        xaxis={
+            "title": t(lang, "figure.status_by_stage.x"),
+            "tickangle": -35,
+            "automargin": True,
+        },
         yaxis_title=t(lang, "figure.status_by_stage.y"),
-        uniformtext_minsize=11,
+        uniformtext_minsize=10,
         uniformtext_mode="hide",
     )
+    # Increase bottom margin to prevent rotated label cutoff
+    fig.update_layout(margin={"b": 80})
     return fig
 
 
 def status_by_block_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
     """Stacked bar: dossier counts by building family (PRO / SUE / SHARED)."""
     if df.empty or "bloque" not in df.columns or "estatus" not in df.columns:
-        return empty_figure(t(lang, "figure.status_by_family.title"), t(lang, "figure.no_data"))
+        return empty_figure(t(lang, "figure.status_by_family.title"), "Sin datos para el filtro seleccionado")
 
     work = df.copy()
     work["status"] = _classify_status(work["estatus"])
     work["family"] = derive_building_family(work)
+    if work.empty:
+        return empty_figure(t(lang, "figure.status_by_family.title"), "Sin datos para el filtro seleccionado")
 
     grouped = (
         work.groupby(["family", "status"])
@@ -334,20 +359,30 @@ def status_by_block_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
             grouped[s] = 0
     grouped = grouped.reindex(_FAMILY_ORDER, fill_value=0)
 
+    totals_family = grouped.sum(axis=1)
     fig = go.Figure()
     for status in ("approved", "pending", "in_review"):
+        min_count = (totals_family * 0.08).clip(lower=1)
+        pct = (grouped[status] / totals_family.where(totals_family > 0) * 100).fillna(0.0)
+        label = _status_label(lang, status)
+        customdata = [
+            [label, int(cnt), round(float(p), 1)]
+            for cnt, p in zip(grouped[status].tolist(), pct.tolist())
+        ]
         fig.add_trace(
             go.Bar(
-                name=_status_label(lang, status),
+                name=label,
                 x=grouped.index.tolist(),
                 y=grouped[status],
                 marker_color=_STATUS_COLORS[status],
-                text=grouped[status].where(grouped[status] > 0).astype("Int64").astype(str).replace("<NA>", ""),
-                textposition="auto",
+                text=grouped[status].where(grouped[status] >= min_count).astype("Int64").astype(str).replace("<NA>", ""),
+                textposition="inside",
+                insidetextanchor="middle",
                 insidetextfont={"size": 12, "color": "#ffffff"},
-                outsidetextfont={"size": 12, "color": "#1f2937"},
-                cliponaxis=False,
-                constraintext="none",
+                cliponaxis=True,
+                constraintext="both",
+                customdata=customdata,
+                hovertemplate="<b>%{customdata[0]}</b><br>Dossiers: %{customdata[1]}<br>% del total: %{customdata[2]:.1f}%<extra></extra>",
             )
         )
     fig.update_layout(
@@ -357,7 +392,7 @@ def status_by_block_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
         ),
         xaxis_title=t(lang, "figure.status_by_family.x"),
         yaxis_title=t(lang, "figure.status_by_family.y"),
-        uniformtext_minsize=11,
+        uniformtext_minsize=10,
         uniformtext_mode="hide",
     )
     return fig
@@ -598,7 +633,9 @@ def cumulative_released_weight_growth_figure(payload: Dict[str, Any], lang: str 
 
 
 def _historical_frame(payload: Dict[str, Any]) -> pd.DataFrame:
-    records = payload.get("history_series", []) if payload else []
+    if not isinstance(payload, dict):
+        return pd.DataFrame()
+    records = payload.get("history_series", []) or []
     if not records:
         return pd.DataFrame()
     frame = pd.DataFrame(records).sort_values("analysis_week").reset_index(drop=True)
@@ -681,7 +718,7 @@ def snapshot_approval_trend_figure(payload: Dict[str, Any], lang: str = "en") ->
         title_key="figure.snapshot_approval.title",
         x_key="figure.snapshot_approval.x",
         y_key="figure.snapshot_approval.y",
-        color="#2d6fb7",
+        color=_STATUS_COLORS["approved"],
         lang=lang,
     )
 

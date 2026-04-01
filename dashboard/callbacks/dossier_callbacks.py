@@ -12,6 +12,7 @@ The dashboard calls the FastAPI backend so both services can run independently.
 from __future__ import annotations
 
 import os
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -36,6 +37,23 @@ from analytics.metrics import compute_global_metrics
 _API_BASE = os.getenv("QA_API_BASE", "http://127.0.0.1:8000")
 _TIMEOUT = 10  # seconds
 
+# In-process cache for _fetch_dossiers: key → (DataFrame, timestamp)
+# Invalidated automatically when the source CSV changes (mtime-keyed).
+_DOSSIER_CACHE: Dict[tuple, tuple] = {}
+_CACHE_TTL = 30  # seconds; upper bound before a stale entry is evicted regardless of mtime
+
+_CSV_PATH = os.getenv(
+    "QA_CSV_PATH",
+    os.path.join(os.path.dirname(__file__), "..", "..", "data", "processed", "baysa_dossiers_clean.csv"),
+)
+
+
+def _csv_mtime() -> float:
+    try:
+        return os.path.getmtime(_CSV_PATH)
+    except OSError:
+        return 0.0
+
 
 def _fetch_dossiers(
     contractor: str = "ALL",
@@ -43,7 +61,20 @@ def _fetch_dossiers(
     etapa: str = "ALL",
     entrega: str = "ALL",
 ) -> pd.DataFrame:
-    """Fetch dossier records from the FastAPI backend and return as DataFrame."""
+    """Fetch dossier records from the FastAPI backend and return as DataFrame.
+
+    Results are cached per unique filter combination.  The cache is
+    invalidated when the source CSV's mtime changes or after _CACHE_TTL
+    seconds, whichever comes first.
+    """
+    mtime = _csv_mtime()
+    key = (contractor, estatus, etapa, entrega, mtime)
+    cached = _DOSSIER_CACHE.get(key)
+    if cached is not None:
+        df, ts = cached
+        if time.monotonic() - ts < _CACHE_TTL:
+            return df
+
     params: Dict[str, str] = {"limit": "5000"}
     if contractor != "ALL":
         params["contratista"] = contractor
@@ -58,21 +89,23 @@ def _fetch_dossiers(
         resp = requests.get(f"{_API_BASE}/api/dossiers", params=params, timeout=_TIMEOUT)
         resp.raise_for_status()
         items = resp.json().get("items", [])
-        return pd.DataFrame(items) if items else pd.DataFrame()
+        result = pd.DataFrame(items) if items else pd.DataFrame()
     except Exception:
         # Fallback: load directly from modules (useful when backend is not yet started)
         from modules.dossier_control.data_loader import load_consolidated  # noqa: PLC0415
-        df = load_consolidated()
+        result = load_consolidated()
 
-        if contractor != "ALL" and "CONTRATISTA" in df.columns:
-            df = df[df["CONTRATISTA"] == contractor]
-        if estatus != "ALL" and "ESTATUS" in df.columns:
-            df = df[df["ESTATUS"] == estatus]
-        if etapa != "ALL" and "ETAPA" in df.columns:
-            df = df[df["ETAPA"] == etapa]
-        if entrega != "ALL" and "ENTREGA" in df.columns:
-            df = df[df["ENTREGA"] == entrega]
-        return df
+        if contractor != "ALL" and "CONTRATISTA" in result.columns:
+            result = result[result["CONTRATISTA"] == contractor]
+        if estatus != "ALL" and "ESTATUS" in result.columns:
+            result = result[result["ESTATUS"] == estatus]
+        if etapa != "ALL" and "ETAPA" in result.columns:
+            result = result[result["ETAPA"] == etapa]
+        if entrega != "ALL" and "ENTREGA" in result.columns:
+            result = result[result["ENTREGA"] == entrega]
+
+    _DOSSIER_CACHE[key] = (result, time.monotonic())
+    return result
 
 
 def _fetch_metrics(contractor: str = "ALL") -> Dict[str, Any]:
