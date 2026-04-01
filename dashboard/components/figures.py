@@ -333,8 +333,6 @@ def status_by_stage_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
             "automargin": True,
         },
         yaxis_title=t(lang, "figure.status_by_stage.y"),
-        uniformtext_minsize=8,
-        uniformtext_mode="hide",
     )
     # Increase bottom margin to prevent rotated label cutoff
     fig.update_layout(margin={"b": 80})
@@ -398,8 +396,6 @@ def status_by_block_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
         ),
         xaxis_title=t(lang, "figure.status_by_family.x"),
         yaxis_title=t(lang, "figure.status_by_family.y"),
-        uniformtext_minsize=8,
-        uniformtext_mode="hide",
     )
     return fig
 
