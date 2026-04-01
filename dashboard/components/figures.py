@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -681,44 +681,103 @@ def snapshot_released_weight_trend_figure(payload: Dict[str, Any], lang: str = "
 
 
 # ── New Contract milestone figures ───────────────────────────────────────────
-# Physical progress data from Excel "Avances Semanales" at Semana 184.
-# Week reference: Semana 196 closes Friday April 3, 2026.
-# Commitment weeks derived from Excel "Cuadro de Alcances Nuevos":
-#   4 abr  → W197 | 18 abr (S2) → W199 | 30 abr → W200 | 23/25 may → W204
-# SUE_78 / SUE_79 were still part of the new-contract scope at the W195 cut,
-# and are now shown as fully released in W196.
-_NEW_CONTRACT_BLOCKS: list[Dict[str, Any]] = [
-    {"block": "SUE_74", "montaje": 93.7, "soldadura": 84.6, "liberacion": 30.9,
-     "commitment_week": 197, "commitment_date": "4 abr",    "in_budget": True},
-    {"block": "SUE_75", "montaje": 99.8, "soldadura": 79.2, "liberacion":  5.8,
-     "commitment_week": 200, "commitment_date": "30 abr",   "in_budget": True},
-    {"block": "SUE_78", "montaje": 100.0, "soldadura": 100.0, "liberacion": 100.0,
-     "commitment_week": 196, "commitment_date": "Liberado W196", "in_budget": True},
-    {"block": "SUE_79", "montaje": 100.0, "soldadura": 100.0, "liberacion": 100.0,
-     "commitment_week": 196, "commitment_date": "Liberado W196", "in_budget": True},
-    {"block": "SUE_84", "montaje": 78.9, "soldadura": 72.6, "liberacion": 53.7,
-     "commitment_week": None, "commitment_date": "—",       "in_budget": False},
-    {"block": "SUE_85", "montaje": 80.3, "soldadura": 69.9, "liberacion":  0.0,
-     "commitment_week": None, "commitment_date": "—",       "in_budget": False},
-    {"block": "SUE_88", "montaje": 96.7, "soldadura": 95.8, "liberacion": 52.6,
-     "commitment_week": 197, "commitment_date": "4 abr",    "in_budget": True},
-    {"block": "SUE_94", "montaje": 94.5, "soldadura": 63.4, "liberacion": 41.0,
-     "commitment_week": 204, "commitment_date": "25 may",   "in_budget": True},
-    {"block": "SUE_95", "montaje": 91.3, "soldadura": 59.3, "liberacion": 36.0,
-     "commitment_week": 204, "commitment_date": "23 may",   "in_budget": True},
-    {"block": "SUE_96", "montaje": 65.5, "soldadura": 32.7, "liberacion":  0.0,
-     "commitment_week": 204, "commitment_date": "25 may·S1 / 18 abr·S2", "in_budget": True,
-     "milestone2_week": 199, "milestone2_date": "18 abr·S2"},
-]
+# Physical progress baselines from Excel "Avances Semanales" at Semana 184.
+# Commitment weeks derived from Excel "Cuadro de Alcances Nuevos".
+_NEW_CONTRACT_BASELINES: Dict[str, Dict[str, Any]] = {
+    "SUE_74": {"montaje": 93.7, "soldadura": 84.6, "liberacion": 30.9, "commitment_week": 197, "commitment_date": "4 abr", "in_budget": True},
+    "SUE_75": {"montaje": 99.8, "soldadura": 79.2, "liberacion": 5.8, "commitment_week": 200, "commitment_date": "30 abr", "in_budget": True},
+    "SUE_84": {"montaje": 78.9, "soldadura": 72.6, "liberacion": 53.7, "commitment_week": None, "commitment_date": "—", "in_budget": False},
+    "SUE_85": {"montaje": 80.3, "soldadura": 69.9, "liberacion": 0.0, "commitment_week": None, "commitment_date": "—", "in_budget": False},
+    "SUE_88": {"montaje": 96.7, "soldadura": 95.8, "liberacion": 52.6, "commitment_week": 197, "commitment_date": "4 abr", "in_budget": True},
+    "SUE_94": {"montaje": 94.5, "soldadura": 63.4, "liberacion": 41.0, "commitment_week": 204, "commitment_date": "25 may", "in_budget": True},
+    "SUE_95": {"montaje": 91.3, "soldadura": 59.3, "liberacion": 36.0, "commitment_week": 204, "commitment_date": "23 may", "in_budget": True},
+    "SUE_96": {"montaje": 65.5, "soldadura": 32.7, "liberacion": 0.0, "commitment_week": 204, "commitment_date": "25 may·S1 / 18 abr·S2", "in_budget": True, "milestone2_week": 199, "milestone2_date": "18 abr·S2"},
+}
 
 
-def new_contract_progress_figure(lang: str = "en") -> go.Figure:
+def _resolve_week_number(value: object) -> Optional[int]:
+    week = pd.to_numeric(pd.Series([value]), errors="coerce").iloc[0]
+    if pd.isna(week):
+        return None
+    return int(week)
+
+
+def build_new_contract_figure_blocks(df: pd.DataFrame, analysis_week: object = None) -> list[Dict[str, Any]]:
+    """Build dynamic new-contract blocks from the current filtered dataset."""
+    if df.empty or "bloque" not in df.columns:
+        return []
+
+    work = df.copy()
+    work["block"] = _normalize_bloque(work.get("bloque", pd.Series(index=work.index, dtype=object)))
+    work = work[work["block"].ne("")].copy()
+    if work.empty:
+        return []
+
+    work["status_class"] = _classify_status(work.get("estatus", pd.Series(index=work.index, dtype=object)))
+    work["release_week_num"] = pd.to_numeric(
+        work.get("semana_liberacion_dossier", pd.Series(index=work.index, dtype=object)),
+        errors="coerce",
+    )
+    work = work.sort_values(["block", "release_week_num"], na_position="last").drop_duplicates("block", keep="last")
+
+    current_week = _resolve_week_number(analysis_week)
+    if current_week is None:
+        release_max = work["release_week_num"].dropna()
+        reference_max = pd.to_numeric(work.get("hito_semana", pd.Series(index=work.index, dtype=object)), errors="coerce").dropna()
+        if not release_max.empty:
+            current_week = int(release_max.max())
+        elif not reference_max.empty:
+            current_week = int(reference_max.max())
+        else:
+            current_week = 195
+
+    blocks: list[Dict[str, Any]] = []
+    for row in work.itertuples(index=False):
+        block = row.block
+        block_data = dict(_NEW_CONTRACT_BASELINES.get(block, {}))
+        release_week = None if pd.isna(row.release_week_num) else int(row.release_week_num)
+        is_released = row.status_class == "approved" and release_week is not None and release_week <= current_week
+
+        block_data.setdefault("montaje", 0.0)
+        block_data.setdefault("soldadura", 0.0)
+        block_data.setdefault("liberacion", 0.0)
+        block_data.setdefault("commitment_week", release_week)
+        block_data.setdefault("commitment_date", f"W{release_week}" if release_week is not None else "—")
+        block_data.setdefault("in_budget", True)
+
+        if is_released:
+            block_data.update(
+                {
+                    "montaje": 100.0,
+                    "soldadura": 100.0,
+                    "liberacion": 100.0,
+                    "commitment_week": release_week,
+                    "commitment_date": f"Liberado W{release_week}",
+                }
+            )
+
+        block_data["block"] = block
+        blocks.append(block_data)
+
+    return sorted(
+        blocks,
+        key=lambda item: (
+            item.get("commitment_week") is None,
+            item.get("commitment_week") or 999,
+            item["block"],
+        ),
+    )
+
+
+def new_contract_progress_figure(blocks: list[Dict[str, Any]], lang: str = "en") -> go.Figure:
     """Stacked horizontal bars: liberación / soldadura gap / montaje gap / pending.
 
-    Shows physical progress at Semana 184 reference for the new-contract SUE Stage-4 blocks.
-    Commitment dates are annotated on the right; SUE_84/85 are flagged as outside budget.
+    Uses live new-contract scope blocks with Excel baselines where available.
     """
-    blocks = sorted(_NEW_CONTRACT_BLOCKS, key=lambda d: d["liberacion"])
+    if not blocks:
+        return empty_figure(t(lang, "figure.nc_progress.title"), t(lang, "figure.no_data"))
+
+    blocks = sorted(blocks, key=lambda d: d["liberacion"])
 
     names = [d["block"] for d in blocks]
     lib   = [d["liberacion"] for d in blocks]
@@ -820,7 +879,7 @@ def new_contract_progress_figure(lang: str = "en") -> go.Figure:
     return fig
 
 
-def new_contract_timeline_figure(lang: str = "en") -> go.Figure:
+def new_contract_timeline_figure(blocks: list[Dict[str, Any]], lang: str = "en", analysis_week: object = None) -> go.Figure:
     """Gantt-style timeline for new-contract SUE blocks.
 
     X axis = project week. Each block shows a bar from Week 196 (current) to the
@@ -828,15 +887,15 @@ def new_contract_timeline_figure(lang: str = "en") -> go.Figure:
     marker is drawn for SUE_96 S2 (intermediate date). SUE_84 / SUE_85 (outside
     budget) extend to the chart edge with a different style.
     """
-    CURRENT_WEEK = 196
+    if not blocks:
+        return empty_figure(t(lang, "figure.nc_timeline.title"), t(lang, "figure.no_data"))
+
+    CURRENT_WEEK = _resolve_week_number(analysis_week) or 196
     CHART_MIN    = 193
     CHART_MAX    = 208
 
     # Sort by commitment week ascending (no-date blocks last)
-    blocks = sorted(
-        _NEW_CONTRACT_BLOCKS,
-        key=lambda d: (d["commitment_week"] is None, d["commitment_week"] or 999),
-    )
+    blocks = sorted(blocks, key=lambda d: (d["commitment_week"] is None, d["commitment_week"] or 999))
 
     fig = go.Figure()
 

@@ -243,6 +243,7 @@ def overview_page(lang: str = "en") -> dbc.Container:
                     html.H5(t(lang, "section.exec_status"), id="section-exec-status", className="qa-section-title mt-1 mb-2"),
                     html.Div(id="exec-status-header", className="mb-2"),
                 ],
+                id="section-wrap-exec-status",
                 className="qa-export-section qa-export-section--exec-status",
             ),
             # ── TOP: Key Risk KPIs ─────────────────────────────────────────────
@@ -251,6 +252,7 @@ def overview_page(lang: str = "en") -> dbc.Container:
                     html.H5(t(lang, "section.risk_exceptions"), id="section-risk-exceptions", className="qa-section-title mt-1 mb-2"),
                     html.Div(id="risk-exception-kpis", className="mb-3 qa-kpi-zone"),
                 ],
+                id="section-wrap-risk-exceptions",
                 className="qa-export-section qa-export-section--risk-kpis",
             ),
             # ── TOP: Recommended Actions ───────────────────────────────────────
@@ -259,6 +261,7 @@ def overview_page(lang: str = "en") -> dbc.Container:
                     html.H5(t(lang, "section.recommended_actions"), id="section-recommended-actions", className="qa-section-title mt-1 mb-2"),
                     html.Div(id="recommended-actions-block", className="mb-3"),
                 ],
+                id="section-wrap-recommended-actions",
                 className="qa-export-section qa-export-section--actions",
             ),
             # ── MIDDLE: Top Backlog Risks ──────────────────────────────────────
@@ -273,6 +276,7 @@ def overview_page(lang: str = "en") -> dbc.Container:
                         ]
                     ),
                 ],
+                id="section-wrap-top-backlog-risks",
                 className="qa-export-section qa-export-section--risk",
             ),
             # ── Executive Overview KPIs ────────────────────────────────────────
@@ -281,6 +285,7 @@ def overview_page(lang: str = "en") -> dbc.Container:
                     html.H5(t(lang, "section.executive_overview"), id="section-executive-overview", className="qa-section-title mt-1 mb-2"),
                     html.Div(id="executive-kpis", className="mb-4 qa-kpi-zone"),
                 ],
+                id="section-wrap-executive-overview",
                 className="qa-export-section qa-export-section--overview",
             ),
             # ── BOTTOM: Trends (1 weekly + 1 cumulative) ──────────────────────
@@ -334,6 +339,7 @@ def overview_page(lang: str = "en") -> dbc.Container:
                         style={"display": "none"},
                     ),
                 ],
+                id="section-wrap-weekly-management",
                 className="qa-export-section qa-export-section--weekly",
             ),
             html.Section(
@@ -386,6 +392,7 @@ def overview_page(lang: str = "en") -> dbc.Container:
                         ]
                     ),
                 ],
+                id="section-wrap-historical-comparison",
                 className="qa-export-section qa-export-section--historical",
             ),
             html.Section(
@@ -436,6 +443,7 @@ def overview_page(lang: str = "en") -> dbc.Container:
                         ]
                     ),
                 ],
+                id="section-wrap-dossier-analysis",
                 className="qa-export-section qa-export-section--analysis",
             ),
             html.Section(
@@ -464,6 +472,7 @@ def overview_page(lang: str = "en") -> dbc.Container:
                         ]
                     ),
                 ],
+                id="section-wrap-new-contract",
                 className="qa-export-section qa-export-section--new-contract",
             ),
             html.Section(
@@ -471,6 +480,7 @@ def overview_page(lang: str = "en") -> dbc.Container:
                     html.H5(t(lang, "section.executive_report_pack"), id="section-executive-report-pack", className="qa-section-title mt-2 mb-2"),
                     html.Div(id="executive-report-pack", className="mb-4"),
                 ],
+                id="section-wrap-executive-report-pack",
                 className="qa-export-section qa-export-section--report",
             ),
             html.Section(
@@ -478,6 +488,7 @@ def overview_page(lang: str = "en") -> dbc.Container:
                     html.H5(t(lang, "section.executive_summary"), id="section-executive-summary", className="qa-section-title mt-2 mb-2"),
                     html.Div(id="executive-summary-table", className="mb-4"),
                 ],
+                id="section-wrap-executive-summary",
                 className="qa-export-section qa-export-section--summary",
             ),
             html.Section(
@@ -489,6 +500,7 @@ def overview_page(lang: str = "en") -> dbc.Container:
                     ),
                     html.Div(id="quality-kpis", className="mb-1 qa-secondary-kpis"),
                 ],
+                id="section-wrap-quality-signals",
                 className="qa-export-section qa-export-section--secondary",
             ),
         ],

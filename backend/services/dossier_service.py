@@ -75,6 +75,7 @@ _FAMILY_ORDER = ["PRO", "SUE", "SHARED"]
 
 _WEIGHT_AUDIT_DELTA_WARNING_KG = 100000.0
 _SNAPSHOT_PAYLOAD_VERSION = "0.6"
+_NEW_CONTRACT_CUTOFF_WEEK = 195
 
 
 def _processed_baysa_path() -> Path:
@@ -117,6 +118,34 @@ def _normalise_stage(value: object) -> Optional[str]:
 
 def _normalise_weight(series: pd.Series) -> pd.Series:
     return pd.to_numeric(series, errors="coerce").fillna(0.0)
+
+
+def apply_contract_scope_rules(df: pd.DataFrame) -> pd.DataFrame:
+    """Derive contract_group from the agreed scope rule.
+
+    New contract contains only SUE Stage 4 blocks that were not released by W195.
+    All remaining rows stay in the original scope group.
+    """
+    if df.empty:
+        return df
+
+    out = df.copy()
+    bloque = out.get("bloque", pd.Series(index=out.index, dtype="object")).fillna("").astype(str).str.strip().str.upper()
+    etapa = pd.to_numeric(out.get("etapa", pd.Series(index=out.index, dtype="object")), errors="coerce")
+    release_week = pd.to_numeric(
+        out.get("semana_liberacion_dossier", pd.Series(index=out.index, dtype="object")),
+        errors="coerce",
+    )
+
+    new_contract_mask = (
+        bloque.str.startswith("SUE_")
+        & etapa.eq(4)
+        & (release_week.isna() | (release_week > _NEW_CONTRACT_CUTOFF_WEEK))
+    )
+
+    out["contract_group"] = "original"
+    out.loc[new_contract_mask, "contract_group"] = "new_contract"
+    return out
 
 
 def _normalise_week_value(value: object) -> Optional[int]:
@@ -720,6 +749,8 @@ def build_weekly_management_payload(df: pd.DataFrame, selected_week: object = No
 
 def _standardize_baysa_processed(df: pd.DataFrame) -> pd.DataFrame:
 
+    df = apply_contract_scope_rules(df)
+
     out = pd.DataFrame()
 
     contractor_col = df.get("contractor", pd.Series("BAYSA", index=df.index, dtype="object"))
@@ -752,6 +783,7 @@ def _standardize_baysa_processed(df: pd.DataFrame) -> pd.DataFrame:
         df.get("semana_liberacion_dossier", pd.Series(index=df.index, dtype="object"))
     )
     out["bloque"] = _normalise_bloque(df.get("bloque", pd.Series(index=df.index, dtype="object")))
+    out["contract_group"] = df.get("contract_group", pd.Series("original", index=df.index, dtype="object")).fillna("original")
     out.attrs["weight_source_column"] = "peso_dossier_kg"
     out.attrs["has_weight_block_source"] = "peso_bloque_kg" in df.columns
     out.attrs["has_weight_dossier_source"] = "peso_dossier_kg" in df.columns

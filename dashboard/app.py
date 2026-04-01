@@ -21,6 +21,7 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 from backend.services.dossier_service import (
+    apply_contract_scope_rules,
     build_executive_report_payload,
     build_historical_comparison_payload,
     build_weekly_management_payload,
@@ -50,6 +51,7 @@ from dashboard.components.executive_header import (
     recommended_actions_block,
 )
 from dashboard.components.figures import (
+    build_new_contract_figure_blocks,
     cumulative_approved_growth_figure,
     cumulative_released_weight_growth_figure,
     derive_building_family,
@@ -102,7 +104,7 @@ def _load_local_dossier_csv() -> pd.DataFrame:
     """Load processed BAYSA CSV keeping all rows for KPI split calculations."""
     try:
         df = pd.read_csv(_PROCESSED_CSV_PATH)
-        return df
+        return apply_contract_scope_rules(df)
     except Exception:
         return pd.DataFrame()
 
@@ -158,16 +160,12 @@ def _apply_local_csv_filters(
 def _prepare_scope_df(df: pd.DataFrame, scope: str) -> pd.DataFrame:
     """Return a DataFrame pre-filtered and tagged for the requested scope view.
 
-    Uses the ``contract_group`` column (values: ``original`` | ``new_contract``)
-    to split the dataset.  The 7 rows where ``in_contract_scope == False`` and
-    ``contract_group == original`` are truly out-of-scope and excluded from every
-    view except *original* (where they remain hidden by ``_in_scope``).
+    The contract split is derived at runtime from the agreed rule:
+    new contract contains only SUE Stage 4 blocks not released by W195.
 
-    - ``original``     → all in_contract_scope == True rows (193) — current baseline
-    - ``reduced``      → in_contract_scope == True AND contract_group != new_contract
-                         (the blocks that stay in the original contract: ~180)
-    - ``new_contract`` → contract_group == new_contract (the 15 relocated Stage-4
-                         blocks), all treated as in-scope so KPIs count them
+    - ``original``     → all rows from the source dataset
+    - ``reduced``      → everything except the derived new-contract blocks
+    - ``new_contract`` → only the derived SUE Stage 4 carry-over blocks
     """
     if df.empty:
         return df
@@ -357,6 +355,55 @@ def update_presentation_mode(toggle_value: Optional[list[str]]) -> str:
     return "qa-shell qa-export-ready" if is_presentation else "qa-shell"
 
 
+def _section_visibility_styles(scope_view: Optional[str]) -> list[Dict[str, str]]:
+    scope = scope_view or "reduced"
+    section_ids = [
+        "section-wrap-exec-status",
+        "section-wrap-risk-exceptions",
+        "section-wrap-recommended-actions",
+        "section-wrap-top-backlog-risks",
+        "section-wrap-executive-overview",
+        "section-wrap-weekly-management",
+        "section-wrap-historical-comparison",
+        "section-wrap-dossier-analysis",
+        "section-wrap-new-contract",
+        "section-wrap-executive-report-pack",
+        "section-wrap-executive-summary",
+        "section-wrap-quality-signals",
+    ]
+
+    if scope == "new_contract":
+        visible = {
+            "section-wrap-exec-status",
+            "section-wrap-executive-overview",
+            "section-wrap-weekly-management",
+            "section-wrap-new-contract",
+        }
+    else:
+        visible = set(section_ids) - {"section-wrap-new-contract"}
+
+    return [{} if section_id in visible else {"display": "none"} for section_id in section_ids]
+
+
+@app.callback(
+    Output("section-wrap-exec-status", "style"),
+    Output("section-wrap-risk-exceptions", "style"),
+    Output("section-wrap-recommended-actions", "style"),
+    Output("section-wrap-top-backlog-risks", "style"),
+    Output("section-wrap-executive-overview", "style"),
+    Output("section-wrap-weekly-management", "style"),
+    Output("section-wrap-historical-comparison", "style"),
+    Output("section-wrap-dossier-analysis", "style"),
+    Output("section-wrap-new-contract", "style"),
+    Output("section-wrap-executive-report-pack", "style"),
+    Output("section-wrap-executive-summary", "style"),
+    Output("section-wrap-quality-signals", "style"),
+    Input("scope-selector", "value"),
+)
+def update_scope_section_visibility(scope_view: Optional[str]):
+    return _section_visibility_styles(scope_view)
+
+
 @app.callback(
     Output("filter-contractor", "options"),
     Output("filter-discipline", "options"),
@@ -450,6 +497,7 @@ def update_dashboard(
         include_out_of_scope=True,
     )
     weekly_payload = build_weekly_management_payload(management_filtered, selected_week=week)
+    new_contract_blocks = build_new_contract_figure_blocks(_prepare_scope_df(local_df, "new_contract"), analysis_week=week)
 
     contractor_options: list[dict[str, str]] = []
     if "contractor" in in_scope_df.columns:
@@ -563,11 +611,11 @@ def update_dashboard(
             ),
             lang=lang,
         ),
-        new_contract_progress_figure(lang=lang) if scope == "new_contract" else empty_figure(
+        new_contract_progress_figure(new_contract_blocks, lang=lang) if scope == "new_contract" else empty_figure(
             t(lang, "figure.nc_progress.title"),
             t(lang, "filter.scope.new_contract") + " — " + t(lang, "filter.scope.new_contract.hint"),
         ),
-        new_contract_timeline_figure(lang=lang) if scope == "new_contract" else empty_figure(
+        new_contract_timeline_figure(new_contract_blocks, lang=lang, analysis_week=week) if scope == "new_contract" else empty_figure(
             t(lang, "figure.nc_timeline.title"),
             t(lang, "filter.scope.new_contract") + " — " + t(lang, "filter.scope.new_contract.hint"),
         ),
