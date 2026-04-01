@@ -155,6 +155,26 @@ def overview_page(lang: str = "en") -> dbc.Container:
                         dbc.Card(
                             dbc.CardBody(
                                 [
+                                    html.Label(t(lang, "filter.scope"), id="scope-selector-label", className="qa-subtitle fw-semibold mb-1"),
+                                    dbc.RadioItems(
+                                        id="scope-selector",
+                                        options=[],
+                                        value="reduced",
+                                        className="qa-scope-radio",
+                                    ),
+                                ]
+                            ),
+                            className="qa-panel qa-control-card h-100",
+                        ),
+                        xs=12,
+                        md=6,
+                        lg=4,
+                        className="mb-2",
+                    ),
+                    dbc.Col(
+                        dbc.Card(
+                            dbc.CardBody(
+                                [
                                     html.Label(t(lang, "export.print.label"), className="qa-subtitle fw-semibold mb-1"),
                                     html.Div(
                                         [
@@ -417,6 +437,34 @@ def overview_page(lang: str = "en") -> dbc.Container:
                     ),
                 ],
                 className="qa-export-section qa-export-section--analysis",
+            ),
+            html.Section(
+                [
+                    html.H5(t(lang, "section.new_contract"), id="section-new-contract", className="qa-section-title mt-1 mb-2"),
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                dbc.Card(
+                                    dbc.CardBody(dcc.Graph(id="new-contract-progress-graph", config=_GRAPH_CONFIG, style={"height": "400px"})),
+                                    className="qa-panel qa-chart-card h-100",
+                                ),
+                                xs=12,
+                                lg=7,
+                                className="mb-3",
+                            ),
+                            dbc.Col(
+                                dbc.Card(
+                                    dbc.CardBody(dcc.Graph(id="new-contract-timeline-graph", config=_GRAPH_CONFIG, style={"height": "400px"})),
+                                    className="qa-panel qa-chart-card h-100",
+                                ),
+                                xs=12,
+                                lg=5,
+                                className="mb-3",
+                            ),
+                        ]
+                    ),
+                ],
+                className="qa-export-section qa-export-section--new-contract",
             ),
             html.Section(
                 [

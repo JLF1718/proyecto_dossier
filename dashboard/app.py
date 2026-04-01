@@ -14,7 +14,7 @@ from typing import Any, Dict, Optional
 import dash
 import dash_bootstrap_components as dbc
 import pandas as pd
-from dash import Input, Output, clientside_callback
+from dash import Input, Output, clientside_callback, html
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(_PROJECT_ROOT) not in sys.path:
@@ -54,7 +54,10 @@ from dashboard.components.figures import (
     cumulative_released_weight_growth_figure,
     derive_building_family,
     derive_stage_category,
+    empty_figure,
     executive_summary_frame,
+    new_contract_progress_figure,
+    new_contract_timeline_figure,
     snapshot_approval_trend_figure,
     snapshot_backlog_trend_figure,
     snapshot_released_trend_figure,
@@ -152,6 +155,42 @@ def _apply_local_csv_filters(
     return out
 
 
+def _prepare_scope_df(df: pd.DataFrame, scope: str) -> pd.DataFrame:
+    """Return a DataFrame pre-filtered and tagged for the requested scope view.
+
+    Uses the ``contract_group`` column (values: ``original`` | ``new_contract``)
+    to split the dataset.  The 7 rows where ``in_contract_scope == False`` and
+    ``contract_group == original`` are truly out-of-scope and excluded from every
+    view except *original* (where they remain hidden by ``_in_scope``).
+
+    - ``original``     → all in_contract_scope == True rows (193) — current baseline
+    - ``reduced``      → in_contract_scope == True AND contract_group != new_contract
+                         (the blocks that stay in the original contract: ~180)
+    - ``new_contract`` → contract_group == new_contract (the 15 relocated Stage-4
+                         blocks), all treated as in-scope so KPIs count them
+    """
+    if df.empty:
+        return df
+
+    group_col = "contract_group"
+    scope_col = "in_contract_scope"
+
+    if group_col not in df.columns:
+        # Fallback: behave like current system (no contract_group column yet)
+        return df
+
+    if scope == "new_contract":
+        out = df[df[group_col] == "new_contract"].copy()
+        # Treat all 15 as in-scope so compute_kpis counts them
+        out[scope_col] = True
+        return out
+    elif scope == "reduced":
+        out = df[df[group_col] != "new_contract"].copy()
+        return out
+    else:  # "original" — full baseline: all rows, no group filter
+        return df
+
+
 def _piece_stage_category(series: pd.Series) -> pd.Series:
     out = pd.Series("", index=series.index, dtype="object")
     numeric = pd.to_numeric(series, errors="coerce")
@@ -214,6 +253,9 @@ def update_language_store(language_value: Optional[str]) -> Dict[str, str]:
     Output("management-history-label", "children"),
     Output("management-history-toggle", "options"),
     Output("print-action-label", "children"),
+    Output("scope-selector-label", "children"),
+    Output("scope-selector", "options"),
+    Output("section-new-contract", "children"),
     Input("language-store", "data"),
 )
 def update_static_labels(language_store: Optional[Dict[str, str]]):
@@ -223,6 +265,27 @@ def update_static_labels(language_store: Optional[Dict[str, str]]):
     discipline = t(lang, "filter.discipline")
     system = t(lang, "filter.system")
     week = t(lang, "filter.week")
+
+    scope_options = [
+        {
+            "label": html.Span(
+                [t(lang, "filter.scope.original"), html.Small(f" — {t(lang, 'filter.scope.original.hint')}", className="text-muted ms-1")],
+            ),
+            "value": "original",
+        },
+        {
+            "label": html.Span(
+                [t(lang, "filter.scope.reduced"), html.Small(f" — {t(lang, 'filter.scope.reduced.hint')}", className="text-muted ms-1")],
+            ),
+            "value": "reduced",
+        },
+        {
+            "label": html.Span(
+                [t(lang, "filter.scope.new_contract"), html.Small(f" — {t(lang, 'filter.scope.new_contract.hint')}", className="text-muted ms-1")],
+            ),
+            "value": "new_contract",
+        },
+    ]
 
     return (
         t(lang, "hero.kicker"),
@@ -263,6 +326,9 @@ def update_static_labels(language_store: Optional[Dict[str, str]]):
         t(lang, "filter.history_mode"),
         [{"label": t(lang, "history.mode_hint"), "value": "on"}],
         t(lang, "export.print.action"),
+        t(lang, "filter.scope"),
+        scope_options,
+        t(lang, "section.new_contract"),
     )
 
 
@@ -324,6 +390,8 @@ def update_presentation_mode(toggle_value: Optional[list[str]]) -> str:
     Output("executive-report-pack", "children"),
     Output("exec-status-header", "children"),
     Output("recommended-actions-block", "children"),
+    Output("new-contract-progress-graph", "figure"),
+    Output("new-contract-timeline-graph", "figure"),
     Input("language-store", "data"),
     Input("filter-contractor", "value"),
     Input("filter-discipline", "value"),
@@ -331,6 +399,7 @@ def update_presentation_mode(toggle_value: Optional[list[str]]) -> str:
     Input("filter-week", "value"),
     Input("management-history-toggle", "value"),
     Input("filter-compare-week", "value"),
+    Input("scope-selector", "value"),
 )
 def update_dashboard(
     language_store: Optional[Dict[str, str]],
@@ -340,25 +409,31 @@ def update_dashboard(
     week: Optional[str],
     history_toggle: Optional[list[str]],
     compare_week: Optional[str],
+    scope_view: Optional[str],
 ):
     lang = normalize_lang((language_store or {}).get("lang"))
     local_df = _load_local_dossier_csv()
-    in_scope_df = _in_scope(local_df).copy()
+
+    # Apply scope view: original / reduced / new_contract
+    scope = scope_view or "reduced"
+    scope_df = _prepare_scope_df(local_df, scope)
+
+    in_scope_df = _in_scope(scope_df).copy()
 
     if not in_scope_df.empty:
         in_scope_df["stage_category"] = derive_stage_category(in_scope_df)
         in_scope_df["building_family"] = derive_building_family(in_scope_df)
 
-    kpi_payload = _compute_kpis(local_df)
+    kpi_payload = _compute_kpis(scope_df)
     local_filtered = _apply_local_csv_filters(
-        local_df,
+        scope_df,
         contractor=contractor,
         discipline=discipline,
         system=system,
         week=week,
     )
     summary_filtered = _apply_local_csv_filters(
-        local_df,
+        scope_df,
         contractor=contractor,
         discipline=discipline,
         system=system,
@@ -367,7 +442,7 @@ def update_dashboard(
     )
     summary_table = executive_summary_table(executive_summary_frame(summary_filtered), lang=lang)
     management_filtered = _apply_local_csv_filters(
-        local_df,
+        scope_df,
         contractor=contractor,
         discipline=discipline,
         system=system,
@@ -487,6 +562,14 @@ def update_dashboard(
                 kpi_payload,
             ),
             lang=lang,
+        ),
+        new_contract_progress_figure(lang=lang) if scope == "new_contract" else empty_figure(
+            t(lang, "figure.nc_progress.title"),
+            t(lang, "filter.scope.new_contract") + " — " + t(lang, "filter.scope.new_contract.hint"),
+        ),
+        new_contract_timeline_figure(lang=lang) if scope == "new_contract" else empty_figure(
+            t(lang, "figure.nc_timeline.title"),
+            t(lang, "filter.scope.new_contract") + " — " + t(lang, "filter.scope.new_contract.hint"),
         ),
     )
 

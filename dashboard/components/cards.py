@@ -510,7 +510,6 @@ def executive_report_pack(payload: Dict[str, Any], lang: str = "en") -> html.Div
     return html.Div(
         [
             header,
-            html.Div(executive_cards(payload.get("executive_kpis", {}), lang=lang), className="mb-3"),
             html.Div(
                 [
                     html.H6(t(lang, "report.weekly_highlights"), className="qa-section-title mt-1 mb-2"),

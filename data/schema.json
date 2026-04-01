@@ -20,13 +20,18 @@
     "total_piezas": "Int64",
     "estatus": "string",
     "semana_liberacion_dossier": "Int64",
-    "in_contract_scope": "boolean"
+    "in_contract_scope": "boolean",
+    "contract_group": "string"
   },
   "allowed": {
     "estatus": [
       "approved",
       "pending",
       "in_review"
+    ],
+    "contract_group": [
+      "original",
+      "new_contract"
     ]
   },
   "rules": {

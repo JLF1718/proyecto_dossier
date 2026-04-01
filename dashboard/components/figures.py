@@ -680,6 +680,270 @@ def snapshot_released_weight_trend_figure(payload: Dict[str, Any], lang: str = "
     )
 
 
+# ── New Contract milestone figures ───────────────────────────────────────────
+# Physical progress data from Excel "Avances Semanales" at Semana 184.
+# Week reference: Semana 196 closes Friday April 3, 2026.
+# Commitment weeks derived from Excel "Cuadro de Alcances Nuevos":
+#   4 abr  → W197 | 18 abr (S2) → W199 | 30 abr → W200 | 23/25 may → W204
+_NEW_CONTRACT_BLOCKS: list[Dict[str, Any]] = [
+    {"block": "SUE_74", "montaje": 93.7, "soldadura": 84.6, "liberacion": 30.9,
+     "commitment_week": 197, "commitment_date": "4 abr",    "in_budget": True},
+    {"block": "SUE_75", "montaje": 99.8, "soldadura": 79.2, "liberacion":  5.8,
+     "commitment_week": 200, "commitment_date": "30 abr",   "in_budget": True},
+    {"block": "SUE_84", "montaje": 78.9, "soldadura": 72.6, "liberacion": 53.7,
+     "commitment_week": None, "commitment_date": "—",       "in_budget": False},
+    {"block": "SUE_85", "montaje": 80.3, "soldadura": 69.9, "liberacion":  0.0,
+     "commitment_week": None, "commitment_date": "—",       "in_budget": False},
+    {"block": "SUE_88", "montaje": 96.7, "soldadura": 95.8, "liberacion": 52.6,
+     "commitment_week": 197, "commitment_date": "4 abr",    "in_budget": True},
+    {"block": "SUE_94", "montaje": 94.5, "soldadura": 63.4, "liberacion": 41.0,
+     "commitment_week": 204, "commitment_date": "25 may",   "in_budget": True},
+    {"block": "SUE_95", "montaje": 91.3, "soldadura": 59.3, "liberacion": 36.0,
+     "commitment_week": 204, "commitment_date": "23 may",   "in_budget": True},
+    {"block": "SUE_96", "montaje": 65.5, "soldadura": 32.7, "liberacion":  0.0,
+     "commitment_week": 204, "commitment_date": "25 may·S1 / 18 abr·S2", "in_budget": True,
+     "milestone2_week": 199, "milestone2_date": "18 abr·S2"},
+]
+
+
+def new_contract_progress_figure(lang: str = "en") -> go.Figure:
+    """Stacked horizontal bars: liberación / soldadura gap / montaje gap / pending.
+
+    Shows physical progress at Semana 184 reference for the 8 new-contract SUE Stage-4 blocks.
+    Commitment dates are annotated on the right; SUE_84/85 are flagged as outside budget.
+    """
+    blocks = sorted(_NEW_CONTRACT_BLOCKS, key=lambda d: d["liberacion"])
+
+    names = [d["block"] for d in blocks]
+    lib   = [d["liberacion"] for d in blocks]
+    sold  = [max(0.0, d["soldadura"] - d["liberacion"]) for d in blocks]
+    mont  = [max(0.0, d["montaje"]   - d["soldadura"])  for d in blocks]
+    pend  = [max(0.0, 100.0 - d["montaje"])             for d in blocks]
+
+    fig = go.Figure()
+
+    # 1. Liberado (green)
+    fig.add_trace(go.Bar(
+        name=t(lang, "nc.legend.liberado"),
+        y=names, x=lib, orientation="h",
+        marker_color="#2e8540",
+        text=[f"{v:.1f}%" if v > 5 else "" for v in lib],
+        textposition="inside",
+        insidetextfont={"color": "#fff", "size": 11},
+        hovertemplate="%{y}: %{x:.1f}% liberado<extra></extra>",
+    ))
+    # 2. Soldado but not released (blue)
+    fig.add_trace(go.Bar(
+        name=t(lang, "nc.legend.soldado"),
+        y=names, x=sold, orientation="h",
+        marker_color="#2d6fb7",
+        text=[f"{v:.1f}%" if v > 5 else "" for v in sold],
+        textposition="inside",
+        insidetextfont={"color": "#fff", "size": 11},
+        hovertemplate="%{y}: %{x:.1f}% soldado (no liberado)<extra></extra>",
+    ))
+    # 3. Assembled but not welded (light blue-gray)
+    fig.add_trace(go.Bar(
+        name=t(lang, "nc.legend.montado"),
+        y=names, x=mont, orientation="h",
+        marker_color="#9db4c7",
+        text=[f"{v:.1f}%" if v > 5 else "" for v in mont],
+        textposition="inside",
+        insidetextfont={"color": "#333", "size": 11},
+        hovertemplate="%{y}: %{x:.1f}% montado (no soldado)<extra></extra>",
+    ))
+    # 4. Assembly pending (very light gray)
+    fig.add_trace(go.Bar(
+        name=t(lang, "nc.legend.pendiente"),
+        y=names, x=pend, orientation="h",
+        marker_color="#e8edf2",
+        marker_line={"color": "#c8d4de", "width": 0.5},
+        text=[f"{v:.1f}%" if v > 5 else "" for v in pend],
+        textposition="inside",
+        insidetextfont={"color": "#999", "size": 10},
+        hovertemplate="%{y}: %{x:.1f}% pendiente montaje<extra></extra>",
+    ))
+
+    # Commitment date annotations (right of 100% bar)
+    for d in blocks:
+        label = d["commitment_date"]
+        color = "#b83227" if not d["in_budget"] else "#0b2a4a"
+        suffix = " *" if not d["in_budget"] else ""
+        fig.add_annotation(
+            x=102, y=d["block"],
+            text=f"{label}{suffix}",
+            showarrow=False,
+            xanchor="left",
+            font={"size": 9, "color": color},
+        )
+
+    fig.update_layout(
+        barmode="stack",
+        template="plotly_white",
+        title={
+            "text": t(lang, "figure.nc_progress.title"),
+            "x": 0.01, "y": 0.98, "yanchor": "top",
+        },
+        xaxis={
+            "title": t(lang, "figure.nc_progress.x"),
+            "range": [0, 135],
+            "ticksuffix": "%",
+            "tickvals": [0, 25, 50, 75, 100],
+            "showgrid": True, "gridcolor": "#eef3f8",
+        },
+        yaxis={"title": ""},
+        legend={
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.02,
+            "xanchor": "left",
+            "x": 0.0,
+            "font": {"size": 10},
+        },
+        margin={"l": 12, "r": 12, "t": 90, "b": 36},
+    )
+    # Add footnote AFTER update_layout so it appends rather than replaces
+    # the commitment-date annotations already added in the loop above.
+    fig.add_annotation(
+        x=1.0, y=-0.06,
+        xref="paper", yref="paper",
+        text=t(lang, "figure.nc_progress.note"),
+        showarrow=False, xanchor="right",
+        font={"size": 9, "color": "#888"},
+    )
+    return fig
+
+
+def new_contract_timeline_figure(lang: str = "en") -> go.Figure:
+    """Gantt-style timeline for new-contract SUE blocks.
+
+    X axis = project week. Each block shows a bar from Week 196 (current) to the
+    commitment week.  Diamond markers flag the commitment milestone; a second
+    marker is drawn for SUE_96 S2 (intermediate date). SUE_84 / SUE_85 (outside
+    budget) extend to the chart edge with a different style.
+    """
+    CURRENT_WEEK = 196
+    CHART_MIN    = 193
+    CHART_MAX    = 208
+
+    # Sort by commitment week ascending (no-date blocks last)
+    blocks = sorted(
+        _NEW_CONTRACT_BLOCKS,
+        key=lambda d: (d["commitment_week"] is None, d["commitment_week"] or 999),
+    )
+
+    fig = go.Figure()
+
+    for d in blocks:
+        cw = d["commitment_week"] if d["commitment_week"] else CHART_MAX - 1
+        bar_color  = "#e8edf2" if not d["in_budget"] else (
+            "#c6e6c8" if d["liberacion"] >= 50 else
+            "#fde7a0" if d["liberacion"] >= 20 else
+            "#f9c8c4"
+        )
+        border_col = "#aaa" if not d["in_budget"] else "#666"
+
+        # Background bar: span current → commitment
+        fig.add_trace(go.Bar(
+            y=[d["block"]],
+            x=[cw - CURRENT_WEEK],
+            base=[CURRENT_WEEK],
+            orientation="h",
+            marker_color=bar_color,
+            marker_line={"color": border_col, "width": 0.8},
+            showlegend=False,
+            hovertemplate=(
+                f"<b>{d['block']}</b><br>"
+                f"Liberación: {d['liberacion']:.1f}%  ·  "
+                f"Soldadura: {d['soldadura']:.1f}%  ·  "
+                f"Montaje: {d['montaje']:.1f}%<br>"
+                f"Compromiso: {d['commitment_date']}<extra></extra>"
+            ),
+        ))
+
+        # Progress fill inside bar: liberacion% of remaining window
+        if d["liberacion"] > 0 and d["commitment_week"]:
+            window = cw - CURRENT_WEEK
+            fill_width = max(0.2, window * d["liberacion"] / 100.0)
+            fig.add_trace(go.Bar(
+                y=[d["block"]],
+                x=[fill_width],
+                base=[CURRENT_WEEK],
+                orientation="h",
+                marker_color="#2e8540",
+                marker_opacity=0.55,
+                showlegend=False,
+                hoverinfo="skip",
+            ))
+
+        # Primary commitment diamond
+        if d["commitment_week"]:
+            fig.add_trace(go.Scatter(
+                x=[d["commitment_week"]],
+                y=[d["block"]],
+                mode="markers+text",
+                marker={"symbol": "diamond", "size": 11, "color": "#0b2a4a", "line": {"width": 1, "color": "#fff"}},
+                text=[f"S{d['commitment_week']}"],
+                textposition="top center",
+                textfont={"size": 8, "color": "#0b2a4a"},
+                showlegend=False,
+                hovertemplate=f"{d['block']}: S{d['commitment_week']} ({d['commitment_date']})<extra></extra>",
+            ))
+
+        # Secondary milestone for SUE_96 S2
+        if d.get("milestone2_week"):
+            fig.add_trace(go.Scatter(
+                x=[d["milestone2_week"]],
+                y=[d["block"]],
+                mode="markers+text",
+                marker={"symbol": "diamond-open", "size": 9, "color": "#b83227", "line": {"width": 1.5, "color": "#b83227"}},
+                text=[f"S{d['milestone2_week']}·S2"],
+                textposition="bottom center",
+                textfont={"size": 7, "color": "#b83227"},
+                showlegend=False,
+                hovertemplate=f"{d['block']} S2: S{d['milestone2_week']} ({d['milestone2_date']})<extra></extra>",
+            ))
+
+    # Current week vertical dashed line
+    fig.add_shape(
+        type="line",
+        x0=CURRENT_WEEK, x1=CURRENT_WEEK,
+        y0=-0.5, y1=len(blocks) - 0.5,
+        line={"color": "#b83227", "width": 2, "dash": "dash"},
+    )
+    fig.add_annotation(
+        x=CURRENT_WEEK, y=len(blocks) - 0.5,
+        text=t(lang, "figure.nc_timeline.current_week"),
+        showarrow=False, yanchor="bottom",
+        font={"size": 9, "color": "#b83227"},
+        bgcolor="rgba(255,255,255,0.7)",
+    )
+
+    tick_weeks = list(range(CHART_MIN, CHART_MAX + 1))
+    fig.update_layout(
+        barmode="overlay",
+        template="plotly_white",
+        title={
+            "text": t(lang, "figure.nc_timeline.title"),
+            "x": 0.01, "y": 0.98, "yanchor": "top",
+        },
+        xaxis={
+            "title": t(lang, "figure.nc_timeline.x"),
+            "range": [CHART_MIN - 0.5, CHART_MAX + 1.5],
+            "tickmode": "array",
+            "tickvals": tick_weeks,
+            "ticktext": [f"S{w}" for w in tick_weeks],
+            "tickangle": -45,
+            "tickfont": {"size": 9},
+            "showgrid": True, "gridcolor": "#eef3f8",
+        },
+        yaxis={"title": ""},
+        showlegend=False,
+        margin={"l": 12, "r": 12, "t": 88, "b": 52},
+    )
+    return fig
+
+
 def physical_signal_weekly_trend_figure(payload: Dict[str, Any], lang: str = "en") -> go.Figure:
     records = payload.get("week_summary", []) if payload else []
     if not records:
