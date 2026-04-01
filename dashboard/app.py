@@ -527,7 +527,21 @@ def update_dashboard(
         include_out_of_scope=True,
     )
     weekly_payload = build_weekly_management_payload(management_filtered, selected_week=week)
-    new_contract_blocks = build_new_contract_figure_blocks(_prepare_scope_df(local_df, "new_contract"), analysis_week=week)
+
+    # Load piece-signal block_summary for new-contract physical progress chart.
+    # This is a lightweight parquet read; it does not depend on scope.
+    _block_signal_df: pd.DataFrame = pd.DataFrame()
+    try:
+        raw_piece_nc = load_piece_signal_payload(rebuild_if_missing=False)
+        _block_signal_df = raw_piece_nc.get("block_summary", pd.DataFrame())
+    except Exception:
+        pass
+
+    new_contract_blocks = build_new_contract_figure_blocks(
+        _prepare_scope_df(local_df, "new_contract"),
+        analysis_week=week,
+        block_signal=_block_signal_df,
+    )
 
     contractor_options: list[dict[str, str]] = []
     if "contractor" in in_scope_df.columns:

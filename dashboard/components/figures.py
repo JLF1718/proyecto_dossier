@@ -820,8 +820,26 @@ def _resolve_week_number(value: object) -> Optional[int]:
     return int(week)
 
 
-def build_new_contract_figure_blocks(df: pd.DataFrame, analysis_week: object = None) -> list[Dict[str, Any]]:
-    """Build new-contract blocks restricted to the 16 NUEVO_ALCANCE blocks."""
+def build_new_contract_figure_blocks(
+    df: pd.DataFrame,
+    analysis_week: object = None,
+    block_signal: Optional["pd.DataFrame"] = None,
+) -> list[Dict[str, Any]]:
+    """Build new-contract blocks restricted to the 16 NUEVO_ALCANCE blocks.
+
+    Physical progress tiers (in priority order):
+    1. ``approved`` + release_week ≤ current_week → fully released (100/100/100).
+    2. Has ``semana_liberacion_dossier`` ≤ current_week → dossier submitted for
+       review; physically welded but not yet formally released (100/100/0).
+    3. Has ``semana_liberacion_dossier`` > current_week → scheduled for future
+       submission; use piece-signal as montaje proxy, soldadura=0.
+    4. No release_week → use piece-signal ``week_tagged_weight_pct`` as montaje
+       proxy (assembly/scheduling progress), soldadura=0, liberacion=0.
+
+    ``block_signal`` is an optional DataFrame from the piece-signal parquet
+    (``baysa_piece_block_summary``) used to derive montaje progress for
+    blocks that haven't been submitted yet.
+    """
     if df.empty or "bloque" not in df.columns:
         return []
 
@@ -842,10 +860,17 @@ def build_new_contract_figure_blocks(df: pd.DataFrame, analysis_week: object = N
     current_week = _resolve_week_number(analysis_week)
     if current_week is None:
         release_max = work["release_week_num"].dropna()
-        if not release_max.empty:
+        if current_week is None and not release_max.empty:
             current_week = int(release_max.max())
         else:
             current_week = max(v["hito"] for v in NUEVO_ALCANCE.values())
+
+    # Build piece-signal lookup: block → week_tagged_weight_pct (0–1)
+    signal_pct: Dict[str, float] = {}
+    if block_signal is not None and not block_signal.empty and "block" in block_signal.columns:
+        for _, sig_row in block_signal.iterrows():
+            blk = str(sig_row["block"]).strip().upper()
+            signal_pct[blk] = float(sig_row.get("week_tagged_weight_pct", 0.0))
 
     blocks: list[Dict[str, Any]] = []
     for row in work.itertuples(index=False):
@@ -853,7 +878,18 @@ def build_new_contract_figure_blocks(df: pd.DataFrame, analysis_week: object = N
         ref = NUEVO_ALCANCE[block]
         hito = ref["hito"]
         release_week = None if pd.isna(row.release_week_num) else int(row.release_week_num)
-        is_released = row.status_class == "approved" and release_week is not None and release_week <= current_week
+
+        is_released = (
+            row.status_class == "approved"
+            and release_week is not None
+            and release_week <= current_week
+        )
+        # Submitted for review: dossier has a recorded release week that has passed
+        is_submitted = (
+            not is_released
+            and release_week is not None
+            and release_week <= current_week
+        )
 
         block_data: Dict[str, Any] = {
             "montaje": 0.0,
@@ -875,6 +911,13 @@ def build_new_contract_figure_blocks(df: pd.DataFrame, analysis_week: object = N
                     "commitment_date": f"Liberado W{release_week}",
                 }
             )
+        elif is_submitted:
+            # Physically assembled and welded; dossier under review
+            block_data.update({"montaje": 100.0, "soldadura": 100.0, "liberacion": 0.0})
+        else:
+            # Not yet submitted — use piece-signal weight pct as montaje proxy
+            mont_pct = round(signal_pct.get(block, 0.0) * 100.0, 1)
+            block_data.update({"montaje": mont_pct, "soldadura": 0.0, "liberacion": 0.0})
 
         block_data["block"] = block
         blocks.append(block_data)
