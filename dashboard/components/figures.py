@@ -685,11 +685,17 @@ def snapshot_released_weight_trend_figure(payload: Dict[str, Any], lang: str = "
 # Week reference: Semana 196 closes Friday April 3, 2026.
 # Commitment weeks derived from Excel "Cuadro de Alcances Nuevos":
 #   4 abr  → W197 | 18 abr (S2) → W199 | 30 abr → W200 | 23/25 may → W204
+# SUE_78 / SUE_79 were still part of the new-contract scope at the W195 cut,
+# and are now shown as fully released in W196.
 _NEW_CONTRACT_BLOCKS: list[Dict[str, Any]] = [
     {"block": "SUE_74", "montaje": 93.7, "soldadura": 84.6, "liberacion": 30.9,
      "commitment_week": 197, "commitment_date": "4 abr",    "in_budget": True},
     {"block": "SUE_75", "montaje": 99.8, "soldadura": 79.2, "liberacion":  5.8,
      "commitment_week": 200, "commitment_date": "30 abr",   "in_budget": True},
+    {"block": "SUE_78", "montaje": 100.0, "soldadura": 100.0, "liberacion": 100.0,
+     "commitment_week": 196, "commitment_date": "Liberado W196", "in_budget": True},
+    {"block": "SUE_79", "montaje": 100.0, "soldadura": 100.0, "liberacion": 100.0,
+     "commitment_week": 196, "commitment_date": "Liberado W196", "in_budget": True},
     {"block": "SUE_84", "montaje": 78.9, "soldadura": 72.6, "liberacion": 53.7,
      "commitment_week": None, "commitment_date": "—",       "in_budget": False},
     {"block": "SUE_85", "montaje": 80.3, "soldadura": 69.9, "liberacion":  0.0,
@@ -709,7 +715,7 @@ _NEW_CONTRACT_BLOCKS: list[Dict[str, Any]] = [
 def new_contract_progress_figure(lang: str = "en") -> go.Figure:
     """Stacked horizontal bars: liberación / soldadura gap / montaje gap / pending.
 
-    Shows physical progress at Semana 184 reference for the 8 new-contract SUE Stage-4 blocks.
+    Shows physical progress at Semana 184 reference for the new-contract SUE Stage-4 blocks.
     Commitment dates are annotated on the right; SUE_84/85 are flagged as outside budget.
     """
     blocks = sorted(_NEW_CONTRACT_BLOCKS, key=lambda d: d["liberacion"])
