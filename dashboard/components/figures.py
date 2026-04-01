@@ -270,6 +270,83 @@ def welding_figure(metrics: Dict[str, Any]) -> go.Figure:
 
 # ── new dataset-driven figures ────────────────────────────────────────────────
 
+_SKIP_LABEL_GROUPS: frozenset[str] = frozenset({
+    "General Information", "Protective Coatings",
+    "Informacion General", "Recubrimientos Protectores",
+    "SHARED",
+})
+
+_SMALL_SEGMENT_THRESHOLD = 0.15  # segments < 15% of stack → outside label
+
+
+def _dual_bar_traces(
+    categories: list,
+    grouped: "pd.DataFrame",
+    totals: "pd.Series",
+    status: str,
+    label: str,
+    color: str,
+    customdata: list,
+    hover: str,
+    skip_groups: frozenset,
+) -> tuple:
+    """Return (large_trace, small_trace) for a single status column.
+
+    Large segments (≥15% of stack) get an inside label.
+    Small segments (<15%) get an outside label placed above the bar.
+    Groups listed in *skip_groups* never receive a label.
+    """
+    vals = grouped[status]
+    mask_large = (vals / totals.where(totals > 0).fillna(1)) >= _SMALL_SEGMENT_THRESHOLD
+
+    def _text(series: "pd.Series", mask: "pd.Series") -> list:
+        out = []
+        for cat, val, show in zip(grouped.index, series, mask):
+            if not show or val == 0 or cat in skip_groups:
+                out.append("")
+            else:
+                out.append(str(int(val)))
+        return out
+
+    large_y = vals.where(mask_large, 0)
+    small_y = vals.where(~mask_large, 0)
+    large_text = _text(vals, mask_large)
+    small_text = _text(vals, ~mask_large)
+
+    common = dict(
+        marker_color=color,
+        legendgroup=label,
+        customdata=customdata,
+        hovertemplate=hover,
+        textangle=0,
+    )
+
+    large_trace = go.Bar(
+        name=label,
+        x=categories,
+        y=large_y,
+        text=large_text,
+        textposition="inside",
+        insidetextanchor="middle",
+        insidetextfont={"size": 12, "color": "#ffffff"},
+        cliponaxis=True,
+        constraintext="both",
+        **common,
+    )
+    small_trace = go.Bar(
+        name=label,
+        x=categories,
+        y=small_y,
+        text=small_text,
+        textposition="outside",
+        outsidetextfont={"size": 11, "color": "#333333"},
+        cliponaxis=False,
+        showlegend=False,
+        **common,
+    )
+    return large_trace, small_trace
+
+
 def status_by_stage_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
     """Stacked bar: dossier counts by business stage / dossier type."""
     if df.empty or "etapa" not in df.columns or "estatus" not in df.columns:
@@ -292,36 +369,24 @@ def status_by_stage_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
             grouped[s] = 0
     grouped = grouped.reindex(_STAGE_ORDER, fill_value=0)
     stage_labels = [stage_label(stage, lang) for stage in grouped.index.tolist()]
-
     totals_stage = grouped.sum(axis=1)
-    # Adaptive threshold: 5% for small stacks (≤10 dossiers), 8% for larger stacks
-    threshold_stage = totals_stage.apply(lambda t: 0.05 if t <= 10 else 0.08)
+
     fig = go.Figure()
     for status in ("approved", "pending", "in_review"):
-        min_count = (totals_stage * threshold_stage).clip(lower=1)
         pct = (grouped[status] / totals_stage.where(totals_stage > 0) * 100).fillna(0.0)
         label = _status_label(lang, status)
         customdata = [
             [label, int(cnt), round(float(p), 1)]
             for cnt, p in zip(grouped[status].tolist(), pct.tolist())
         ]
-        fig.add_trace(
-            go.Bar(
-                name=label,
-                x=stage_labels,
-                y=grouped[status],
-                marker_color=_STATUS_COLORS[status],
-                text=grouped[status].where(grouped[status] >= min_count).astype("Int64").astype(str).replace("<NA>", ""),
-                textposition="inside",
-                insidetextanchor="middle",
-                insidetextfont={"size": 12, "color": "#ffffff"},
-                textangle=0,
-                cliponaxis=True,
-                constraintext="both",
-                customdata=customdata,
-                hovertemplate="<b>%{customdata[0]}</b><br>Dossiers: %{customdata[1]}<br>% del total: %{customdata[2]:.1f}%<extra></extra>",
-            )
+        hover = "<b>%{customdata[0]}</b><br>Dossiers: %{customdata[1]}<br>% del total: %{customdata[2]:.1f}%<extra></extra>"
+        large_t, small_t = _dual_bar_traces(
+            stage_labels, grouped, totals_stage, status, label,
+            _STATUS_COLORS[status], customdata, hover, _SKIP_LABEL_GROUPS,
         )
+        fig.add_trace(large_t)
+        fig.add_trace(small_t)
+
     fig.update_layout(
         **_stacked_bar_layout(
             title_text=t(lang, "figure.status_by_stage.title"),
@@ -334,8 +399,7 @@ def status_by_stage_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
         },
         yaxis_title=t(lang, "figure.status_by_stage.y"),
     )
-    # Increase bottom margin to prevent rotated label cutoff
-    fig.update_layout(margin={"b": 80})
+    fig.update_layout(margin={"t": 92, "b": 80})
     return fig
 
 
@@ -359,36 +423,24 @@ def status_by_block_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
         if s not in grouped.columns:
             grouped[s] = 0
     grouped = grouped.reindex(_FAMILY_ORDER, fill_value=0)
-
     totals_family = grouped.sum(axis=1)
-    # Adaptive threshold: 5% for small stacks (≤10 dossiers), 8% for larger stacks
-    threshold_family = totals_family.apply(lambda t: 0.05 if t <= 10 else 0.08)
+
     fig = go.Figure()
     for status in ("approved", "pending", "in_review"):
-        min_count = (totals_family * threshold_family).clip(lower=1)
         pct = (grouped[status] / totals_family.where(totals_family > 0) * 100).fillna(0.0)
         label = _status_label(lang, status)
         customdata = [
             [label, int(cnt), round(float(p), 1)]
             for cnt, p in zip(grouped[status].tolist(), pct.tolist())
         ]
-        fig.add_trace(
-            go.Bar(
-                name=label,
-                x=grouped.index.tolist(),
-                y=grouped[status],
-                marker_color=_STATUS_COLORS[status],
-                text=grouped[status].where(grouped[status] >= min_count).astype("Int64").astype(str).replace("<NA>", ""),
-                textposition="inside",
-                insidetextanchor="middle",
-                insidetextfont={"size": 12, "color": "#ffffff"},
-                textangle=0,
-                cliponaxis=True,
-                constraintext="both",
-                customdata=customdata,
-                hovertemplate="<b>%{customdata[0]}</b><br>Dossiers: %{customdata[1]}<br>% del total: %{customdata[2]:.1f}%<extra></extra>",
-            )
+        hover = "<b>%{customdata[0]}</b><br>Dossiers: %{customdata[1]}<br>% del total: %{customdata[2]:.1f}%<extra></extra>"
+        large_t, small_t = _dual_bar_traces(
+            grouped.index.tolist(), grouped, totals_family, status, label,
+            _STATUS_COLORS[status], customdata, hover, _SKIP_LABEL_GROUPS,
         )
+        fig.add_trace(large_t)
+        fig.add_trace(small_t)
+
     fig.update_layout(
         **_stacked_bar_layout(
             title_text=t(lang, "figure.status_by_family.title"),
@@ -397,6 +449,7 @@ def status_by_block_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
         xaxis_title=t(lang, "figure.status_by_family.x"),
         yaxis_title=t(lang, "figure.status_by_family.y"),
     )
+    fig.update_layout(margin={"t": 92})
     return fig
 
 
