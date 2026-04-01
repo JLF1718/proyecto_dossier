@@ -150,3 +150,58 @@ Snapshots are persisted to SQLite `weekly_snapshots` table on demand (`make snap
 - Always test empty dataframe edge case when adding new figure functions
 - Status colors must reference _STATUS_COLORS dict — never hardcode hex values
 - New callbacks that read CSV must use the memoization pattern from _fetch_dossiers
+
+### Nuevo Alcance — Block classification & status sync (session 2026-04-01)
+
+#### Scope math (single source of truth)
+```
+  200  total blocks in progress.csv
+  - 7  blocks with False in active column (fuera de alcance)
+  ───
+  193  alcance vigente
+  - 16  _NUEVO_ALCANCE_BLOCKS (moved to nuevo contrato)
+  ───
+  177  contrato principal  ←  what all main KPIs must use
+   16  nuevo contrato      ←  separate chart and KPIs
+```
+
+#### _NUEVO_ALCANCE_BLOCKS (frozenset — do not derive dynamically)
+```
+  SUE_70, SUE_72, SUE_73, SUE_74, SUE_75, SUE_78,
+  SUE_80, SUE_81, SUE_86, SUE_87, SUE_88, SUE_89,
+  SUE_91, SUE_94, SUE_95, SUE_96
+```
+
+#### Status of nuevo alcance blocks (authoritative)
+```
+  LIBERADO (approved):            SUE_78, SUE_91
+  ATENCIÓN COMENTARIOS (pending): remaining 14
+```
+
+#### Status normalization
+Raw Spanish values are mapped via `_STATUS_MAP` before any KPI or chart logic:
+```
+  LIBERADO             → approved
+  ATENCIÓN COMENTARIOS → pending
+```
+Schema accepts both raw and normalized values.
+
+#### Traceability
+Blocks that changed status during reclassification are logged in:
+`data/status_change_log.csv`
+Columns: `bloque, status_anterior, status_nuevo, motivo, fecha`
+Motivo: `"Reclasificación nuevo alcance PVRC24-021"`
+
+#### Bugs fixed this session
+| Bug | Root cause | Fix |
+|---|---|---|
+| KPI showed 183 instead of 177 | Dynamic SUE/W195 heuristic matched only 10 blocks | Replaced with `_NUEVO_ALCANCE_BLOCKS` frozenset |
+| New Contract chart showed only SUE etapa 4 | Hardcoded etapa filter | Filter now uses `_NUEVO_ALCANCE_BLOCKS` membership |
+| Status mismatch between CSV and contract ref | No sync mechanism existed | Synced via `NUEVO_ALCANCE_REF` + `status_change_log.csv` |
+
+#### Rules going forward
+- **NEVER** derive nuevo alcance dynamically from etapa/week heuristics
+- **NEVER** hardcode hex colors — always reference `_STATUS_COLORS`
+- **NEVER** use `textposition="auto"` or `constraintext="none"` in stacked bars
+- Always use `_NUEVO_ALCANCE_BLOCKS` as single source of truth
+- Any scope change must update the frozenset **AND** log to `status_change_log.csv`
