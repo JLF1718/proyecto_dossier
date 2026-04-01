@@ -123,6 +123,23 @@ def _validate_and_normalize_estatus(changes: dict[str, Any]) -> dict[str, Any]:
     return updated
 
 
+def _cast_to_col_dtype(value: Any, col_dtype: Any) -> Any:
+    """Cast value to match the column's actual pandas dtype.
+
+    Uses pd.api.types helpers instead of string-matching dtype names, which
+    broke in pandas 3.x (StringDtype now str()s as "str" not "string").
+    """
+    if value is pd.NA or (isinstance(value, float) and pd.isna(value)):
+        return pd.NA
+
+    if pd.api.types.is_numeric_dtype(col_dtype):
+        numeric = pd.to_numeric(value, errors="coerce")
+        return numeric if not pd.isna(numeric) else value
+
+    # String, object, ArrowDtype string, boolean-stored-as-string, etc.
+    return str(value)
+
+
 def apply_changes_by_bloque(
     csv_path: Path,
     schema_path: Path,
@@ -146,7 +163,7 @@ def apply_changes_by_bloque(
     coerced_changes = _validate_and_normalize_estatus(coerced_changes)
     updated_df = df.copy()
     for field, value in coerced_changes.items():
-        updated_df.at[row_idx, field] = value
+        updated_df.at[row_idx, field] = _cast_to_col_dtype(value, updated_df[field].dtype)
 
     backup_dir = csv_path.parent / "backups"
     backup_dir.mkdir(parents=True, exist_ok=True)

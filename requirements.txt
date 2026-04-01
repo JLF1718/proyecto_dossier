@@ -44,3 +44,4 @@ questionary>=2.0.1
 
 # ── Linting (optional dev dependency) ────────────────────────
 # ruff>=0.4.0
+questionary
