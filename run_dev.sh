@@ -42,6 +42,10 @@ uvicorn backend.main:app \
     --host 0.0.0.0 \
     --port "$FASTAPI_PORT" \
     --reload \
+    --reload-exclude '.venv/*' \
+    --reload-exclude '.runtime/*' \
+    --reload-exclude 'output/*' \
+    --reload-exclude 'data/processed/backups/*' \
     --log-level info &
 FASTAPI_PID=$!
 echo "[API] FastAPI started (PID ${FASTAPI_PID})"
