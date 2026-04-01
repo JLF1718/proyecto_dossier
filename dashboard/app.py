@@ -155,12 +155,12 @@ def _apply_local_csv_filters(
 def _prepare_scope_df(df: pd.DataFrame, scope: str) -> pd.DataFrame:
     """Return a DataFrame pre-filtered and tagged for the requested scope view.
 
-    The contract split is derived at runtime from the agreed rule:
-    new contract contains only SUE Stage 4 blocks not released by W195.
+    The contract split is driven by the authoritative 16-block NUEVO_ALCANCE list
+    (classified as contract_group="new_contract" in apply_contract_scope_rules).
 
     - ``original``     → all rows from the source dataset
-    - ``reduced``      → everything except the derived new-contract blocks
-    - ``new_contract`` → only the derived SUE Stage 4 carry-over blocks
+    - ``reduced``      → only original-contract rows (177 in-scope)
+    - ``new_contract`` → only the 16 nuevo-alcance blocks
     """
     if df.empty:
         return df
@@ -174,7 +174,7 @@ def _prepare_scope_df(df: pd.DataFrame, scope: str) -> pd.DataFrame:
 
     if scope == "new_contract":
         out = df[df[group_col] == "new_contract"].copy()
-        # Treat all 15 as in-scope so compute_kpis counts them
+        # Mark all 16 nuevo-alcance blocks as in-scope for KPI counting
         out[scope_col] = True
         return out
     elif scope == "reduced":

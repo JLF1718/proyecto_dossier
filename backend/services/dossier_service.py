@@ -75,7 +75,14 @@ _FAMILY_ORDER = ["PRO", "SUE", "SHARED"]
 
 _WEIGHT_AUDIT_DELTA_WARNING_KG = 100000.0
 _SNAPSHOT_PAYLOAD_VERSION = "0.6"
-_NEW_CONTRACT_CUTOFF_WEEK = 195
+
+# Authoritative list of the 16 blocks that belong to the nuevo contrato scope.
+# These are excluded from the main-contract KPIs and tracked separately.
+_NUEVO_ALCANCE_BLOCKS: frozenset[str] = frozenset({
+    "SUE_70", "SUE_72", "SUE_73", "SUE_74", "SUE_75", "SUE_78",
+    "SUE_80", "SUE_81", "SUE_86", "SUE_87", "SUE_88", "SUE_89",
+    "SUE_91", "SUE_94", "SUE_95", "SUE_96",
+})
 
 
 def _processed_baysa_path() -> Path:
@@ -121,30 +128,22 @@ def _normalise_weight(series: pd.Series) -> pd.Series:
 
 
 def apply_contract_scope_rules(df: pd.DataFrame) -> pd.DataFrame:
-    """Derive contract_group from the agreed scope rule.
+    """Derive contract_group from the authoritative 16-block nuevo-alcance list.
 
-    New contract contains only SUE Stage 4 blocks that were not released by W195.
-    All remaining rows stay in the original scope group.
+    ``new_contract``  → block is in _NUEVO_ALCANCE_BLOCKS (exactly 16 blocks).
+    ``original``      → everything else (in-scope OR out-of-scope rows).
+
+    The two groups are mutually exclusive. In-scope principal count = 177.
+    In-scope nuevo-contrato count = 16.  177 + 16 = 193 active blocks.
     """
     if df.empty:
         return df
 
     out = df.copy()
-    bloque = out.get("bloque", pd.Series(index=out.index, dtype="object")).fillna("").astype(str).str.strip().str.upper()
-    etapa = pd.to_numeric(out.get("etapa", pd.Series(index=out.index, dtype="object")), errors="coerce")
-    release_week = pd.to_numeric(
-        out.get("semana_liberacion_dossier", pd.Series(index=out.index, dtype="object")),
-        errors="coerce",
-    )
-
-    new_contract_mask = (
-        bloque.str.startswith("SUE_")
-        & etapa.eq(4)
-        & (release_week.isna() | (release_week > _NEW_CONTRACT_CUTOFF_WEEK))
-    )
+    bloque = out.get("bloque", pd.Series(index=out.index, dtype="object")).fillna("").astype(str).str.strip()
 
     out["contract_group"] = "original"
-    out.loc[new_contract_mask, "contract_group"] = "new_contract"
+    out.loc[bloque.isin(_NUEVO_ALCANCE_BLOCKS), "contract_group"] = "new_contract"
     return out
 
 
