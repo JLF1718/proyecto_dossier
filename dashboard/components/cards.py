@@ -31,6 +31,25 @@ def _fmt_pct(value: Any) -> str:
     except (TypeError, ValueError):
         return "0.0%"
 
+def _fmt_bool(value: Any, lang: str = "en") -> str:
+    normalized = str(value).strip().lower()
+    if normalized in {"true", "1", "yes"}:
+        return t(lang, "label.yes")
+    if normalized in {"false", "0", "no"}:
+        return t(lang, "label.no")
+    return "—"
+
+
+def _fmt_status(value: Any, lang: str = "en") -> str:
+    normalized = str(value).strip().lower().replace(" ", "_")
+    if normalized in {"approved", "aprobado", "liberado", "aceptado"}:
+        return t(lang, "status.approved")
+    if normalized in {"in_review", "in review", "en_revision_inpros", "en revision inpros", "en_revisión", "en revisión", "revisión inpros"}:
+        return t(lang, "status.in_review")
+    if normalized:
+        return t(lang, "status.pending")
+    return "—"
+
 
 def _fmt_week(value: Any) -> str:
     try:
@@ -77,6 +96,18 @@ def _tone_for_backlog_delta(value: Any) -> str:
     if number > 0:
         return "danger"
     return "secondary"
+
+
+def _tone_for_age(value: Any) -> str:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "secondary"
+    if number > 15:
+        return "danger"
+    if number >= 10:
+        return "warning"
+    return "success"
 
 
 def _kpi_card(
@@ -158,6 +189,73 @@ def executive_cards(kpis: Dict[str, Any], lang: str = "en") -> html.Div:
     )
 
 
+def stakeholder_overview_cards(
+    kpis: Dict[str, Any],
+    weekly_payload: Dict[str, Any],
+    lang: str = "en",
+) -> html.Div:
+    total = int(kpis.get("total_dossiers", kpis.get("total", 0)) or 0)
+    approved = int(kpis.get("approved_dossiers", kpis.get("approved", 0)) or 0)
+    pending = int(kpis.get("pending_dossiers", kpis.get("pending", 0)) or 0)
+    in_review = int(kpis.get("in_review_dossiers", 0) or 0)
+    open_backlog = pending + in_review
+    open_backlog_pct = (open_backlog / total * 100.0) if total else 0.0
+
+    backlog_summary = weekly_payload.get("backlog_aging_summary", {})
+    delta = weekly_payload.get("delta_kpis", {})
+    analysis_week = delta.get("analysis_week")
+    previous_week = delta.get("previous_week")
+    week_subtitle = t(lang, "label.week_compare", current=_fmt_week(analysis_week), previous=_fmt_week(previous_week))
+
+    return html.Div(
+        dbc.Row(
+            [
+                _kpi_card(t(lang, "kpi.total_dossiers"), _fmt_int(total), t(lang, "kpi.in_scope"), "primary", lg=4, xl=2),
+                _kpi_card(
+                    t(lang, "kpi.approved"),
+                    _fmt_int(approved),
+                    t(lang, "label.of_total", value=f"{(approved / total * 100.0):.1f}") if total else "—",
+                    "success",
+                    lg=4,
+                    xl=2,
+                ),
+                _kpi_card(
+                    t(lang, "kpi.open_backlog"),
+                    _fmt_int(open_backlog),
+                    t(lang, "label.of_in_scope", value=f"{open_backlog_pct:.1f}"),
+                    "warning" if open_backlog > 0 else "success",
+                    lg=4,
+                    xl=2,
+                ),
+                _kpi_card(
+                    t(lang, "kpi.max_age"),
+                    _fmt_int(backlog_summary.get("max_age_weeks", 0)),
+                    t(lang, "kpi.weeks_since_planned"),
+                    _tone_for_age(backlog_summary.get("max_age_weeks", 0)),
+                    lg=4,
+                    xl=2,
+                ),
+                _kpi_card(
+                    t(lang, "kpi.released_this_week"),
+                    _fmt_int(delta.get("released_this_week", 0)),
+                    week_subtitle,
+                    "success",
+                    lg=4,
+                    xl=2,
+                ),
+                _kpi_card(
+                    t(lang, "kpi.released_weight"),
+                    _fmt_tons(kpis.get("peso_liberado_ton", 0.0)),
+                    t(lang, "kpi.weight_with_approved"),
+                    "info",
+                    lg=4,
+                    xl=2,
+                ),
+            ]
+        )
+    )
+
+
 def quality_cards(kpis: Dict[str, Any], lang: str = "en") -> dbc.Row:
     total = max(int(kpis.get("total_dossiers", kpis.get("total", 0))), 1)
     rejected = int(kpis.get("rejected_dossiers", kpis.get("rejected", 0)))
@@ -217,10 +315,10 @@ def weekly_management_cards(payload: Dict[str, Any], lang: str = "en") -> html.D
     return html.Div(
         dbc.Row(
             [
-                _kpi_card(t(lang, "kpi.released_this_week"), _fmt_int(released_this_week), week_subtitle, "success"),
-                _kpi_card(t(lang, "kpi.released_weight_this_week"), _fmt_tons(released_weight_this_week), t(lang, "kpi.actual_released_weight"), "info"),
-                _kpi_card(t(lang, "kpi.change_vs_prev"), _fmt_signed_int(change_vs_previous_week), week_subtitle, _tone_for_delta(change_vs_previous_week)),
-                _kpi_card(t(lang, "kpi.weight_change_vs_prev"), _fmt_signed_tons(weight_change_vs_previous_week), t(lang, "kpi.delta_released_weight"), _tone_for_delta(weight_change_vs_previous_week)),
+                _kpi_card(t(lang, "kpi.change_vs_prev"), _fmt_signed_int(change_vs_previous_week), week_subtitle, _tone_for_delta(change_vs_previous_week), lg=6, xl=3),
+                _kpi_card(t(lang, "kpi.weight_change_vs_prev"), _fmt_signed_tons(weight_change_vs_previous_week), t(lang, "kpi.delta_released_weight"), _tone_for_delta(weight_change_vs_previous_week), lg=6, xl=3),
+                _kpi_card(t(lang, "kpi.released_this_week"), _fmt_int(released_this_week), week_subtitle, "success", lg=6, xl=3),
+                _kpi_card(t(lang, "kpi.released_weight_this_week"), _fmt_tons(released_weight_this_week), t(lang, "kpi.actual_released_weight"), "info", lg=6, xl=3),
             ]
         )
     )
@@ -534,6 +632,82 @@ def executive_report_pack(payload: Dict[str, Any], lang: str = "en") -> html.Div
             html.Div(executive_summary_table(executive_summary, lang=lang)),
         ]
     )
+
+
+def risk_drivers_panel(payload: Dict[str, Any], lang: str = "en") -> html.Div:
+    risk = payload.get("risk_exception_summary", {}) or {}
+    signals = {item.get("key"): item.get("value") for item in risk.get("signals", [])}
+    backlog_groups = payload.get("backlog_aging_summary", {}).get("groups", []) or []
+    stagnant_groups = payload.get("stagnant_groups_summary", {}).get("groups", []) or []
+
+    summary_cards = dbc.Row(
+        [
+            _kpi_card(
+                t(lang, "kpi.max_age"),
+                _fmt_int(signals.get("oldest_backlog_age", 0)),
+                t(lang, "kpi.weeks_since_planned"),
+                _tone_for_age(signals.get("oldest_backlog_age", 0)),
+                lg=3,
+            ),
+            _kpi_card(
+                t(lang, "kpi.stagnant_groups"),
+                _fmt_int(signals.get("stagnant_groups", 0)),
+                t(lang, "kpi.no_movement_groups"),
+                "danger",
+                lg=3,
+            ),
+            _kpi_card(
+                t(lang, "kpi.open_backlog"),
+                _fmt_int(payload.get("backlog_aging_summary", {}).get("total_open_backlog", 0)),
+                t(lang, "kpi.pending_plus_review"),
+                "warning",
+                lg=3,
+            ),
+            _kpi_card(
+                t(lang, "kpi.largest_approval_gap"),
+                _fmt_int(signals.get("largest_approval_gap", 0)),
+                t(lang, "kpi.top_risk_signals"),
+                "info",
+                lg=3,
+            ),
+        ],
+        className="mb-1",
+    )
+
+    backlog_table = _management_table_card(
+        backlog_groups,
+        columns=[
+            (t(lang, "table.stage_type"), "stage_category"),
+            (t(lang, "table.building_family"), "building_family"),
+            (t(lang, "table.open_backlog"), "open_backlog"),
+            (t(lang, "table.oldest_ref_week"), "oldest_reference_week"),
+            (t(lang, "table.max_age_w"), "max_age_weeks"),
+        ],
+        title=t(lang, "report.top_backlog_risks"),
+        empty_message=t(lang, "empty.no_backlog_groups"),
+    )
+    stagnant_table = _management_table_card(
+        stagnant_groups,
+        columns=[
+            (t(lang, "table.stage_type"), "stage_category"),
+            (t(lang, "table.building_family"), "building_family"),
+            (t(lang, "table.open_backlog"), "open_backlog"),
+            (t(lang, "table.released_this_week"), "released_this_week"),
+            (t(lang, "table.cum_approved_growth"), "cumulative_approved_growth"),
+        ],
+        title=t(lang, "report.top_stagnant_groups"),
+        empty_message=t(lang, "empty.no_stagnant_groups"),
+    )
+
+    tabs = dbc.Tabs(
+        [
+            dbc.Tab(backlog_table, label=t(lang, "report.top_backlog_risks")),
+            dbc.Tab(stagnant_table, label=t(lang, "report.top_stagnant_groups")),
+        ],
+        className="qa-risk-tabs",
+    )
+
+    return html.Div([summary_cards, tabs])
 
 
 def backlog_aging_summary(payload: Dict[str, Any], lang: str = "en") -> html.Div:
@@ -985,6 +1159,94 @@ def physical_signal_exceptions_table(payload: Dict[str, Any], lang: str = "en") 
                     "height": "auto",
                     "textAlign": "left",
                 },
+                style_header={
+                    "backgroundColor": "#eef3f8",
+                    "color": "#10222f",
+                    "fontWeight": "700",
+                    "borderBottom": "1px solid #9db4c7",
+                    "textTransform": "uppercase",
+                    "fontSize": "11px",
+                    "letterSpacing": "0.03em",
+                },
+                style_data={
+                    "backgroundColor": "#ffffff",
+                    "color": "#10222f",
+                    "borderBottom": "1px solid #d8e2eb",
+                },
+                style_data_conditional=[
+                    {"if": {"row_index": "odd"}, "backgroundColor": "#f8fbfd"},
+                ],
+            )
+        ),
+        className="qa-panel qa-table-card",
+    )
+
+
+def scope_detail_table(detail_df: pd.DataFrame, lang: str = "en") -> dbc.Card:
+    if detail_df is None or getattr(detail_df, "empty", True):
+        return dbc.Card(
+            dbc.CardBody(html.Div(t(lang, "empty.no_data_selected_filters"), className="text-muted")),
+            className="qa-panel qa-table-card",
+        )
+
+    display = detail_df.copy()
+
+    if "building_family" not in display.columns and "bloque" in display.columns:
+        display["building_family"] = display["bloque"].astype(str).str.split("_").str[0]
+    if "stage_category" not in display.columns and "etapa" in display.columns:
+        display["stage_category"] = pd.to_numeric(display["etapa"], errors="coerce").map(
+            lambda value: f"Stage {int(value)}" if pd.notna(value) else "—"
+        )
+
+    table = pd.DataFrame(
+        {
+            t(lang, "table.id"): display.get("numero", pd.Series(dtype="object")).map(_fmt_int),
+            t(lang, "table.contractor"): display.get("contractor", pd.Series(dtype="object")).fillna("—").astype(str).str.upper(),
+            t(lang, "table.building"): display.get("building_family", pd.Series(dtype="object")).fillna("—").astype(str),
+            t(lang, "table.phase"): pd.to_numeric(display.get("fase", pd.Series(dtype="object")), errors="coerce").map(
+                lambda value: _fmt_int(value) if pd.notna(value) else "—"
+            ),
+            t(lang, "table.stage"): display.get("stage_category", pd.Series(dtype="object")).fillna("—").astype(str),
+            t(lang, "table.block"): display.get("bloque", pd.Series(dtype="object")).fillna("—").astype(str),
+            t(lang, "table.status"): display.get("estatus", pd.Series(dtype="object")).map(lambda value: _fmt_status(value, lang=lang)),
+            t(lang, "table.release_week"): pd.to_numeric(display.get("semana_liberacion_dossier", pd.Series(dtype="object")), errors="coerce").map(
+                lambda value: _fmt_week(value) if pd.notna(value) else "—"
+            ),
+            t(lang, "table.weight_t"): pd.to_numeric(display.get("peso_dossier_kg", pd.Series(dtype="object")), errors="coerce").fillna(0.0).map(
+                lambda value: _fmt_tons(float(value) / 1000.0)
+            ),
+            t(lang, "table.scope_group"): display.get("contract_group", pd.Series(dtype="object")).fillna("—").astype(str).str.replace("_", " ").str.title(),
+            t(lang, "table.kpi_scope"): display.get("in_contract_scope", pd.Series(dtype="object")).map(lambda value: _fmt_bool(value, lang=lang)),
+        }
+    )
+
+    return dbc.Card(
+        dbc.CardBody(
+            dash_table.DataTable(
+                data=table.to_dict("records"),
+                columns=[{"name": c, "id": c} for c in table.columns],
+                page_action="native",
+                page_size=15,
+                sort_action="native",
+                filter_action="native",
+                style_table={"overflowX": "auto"},
+                style_cell={
+                    "fontSize": "12px",
+                    "padding": "8px 10px",
+                    "fontFamily": "IBM Plex Sans, sans-serif",
+                    "border": "none",
+                    "whiteSpace": "normal",
+                    "height": "auto",
+                    "textAlign": "left",
+                    "minWidth": "110px",
+                },
+                style_cell_conditional=[
+                    {"if": {"column_id": t(lang, "table.id")}, "textAlign": "right", "minWidth": "72px", "fontWeight": "600"},
+                    {"if": {"column_id": t(lang, "table.weight_t")}, "textAlign": "right", "minWidth": "96px"},
+                    {"if": {"column_id": t(lang, "table.block")}, "minWidth": "120px", "fontWeight": "600"},
+                    {"if": {"column_id": t(lang, "table.contractor")}, "minWidth": "110px", "fontWeight": "600"},
+                    {"if": {"column_id": t(lang, "table.release_week")}, "minWidth": "96px", "textAlign": "center"},
+                ],
                 style_header={
                     "backgroundColor": "#eef3f8",
                     "color": "#10222f",

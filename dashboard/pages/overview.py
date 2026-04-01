@@ -246,14 +246,14 @@ def overview_page(lang: str = "en") -> dbc.Container:
                 id="section-wrap-exec-status",
                 className="qa-export-section qa-export-section--exec-status",
             ),
-            # ── TOP: Key Risk KPIs ─────────────────────────────────────────────
+            # ── TOP: Stakeholder Overview ─────────────────────────────────────
             html.Section(
                 [
-                    html.H5(t(lang, "section.risk_exceptions"), id="section-risk-exceptions", className="qa-section-title mt-1 mb-2"),
-                    html.Div(id="risk-exception-kpis", className="mb-3 qa-kpi-zone"),
+                    html.H5(t(lang, "section.executive_overview"), id="section-executive-overview", className="qa-section-title mt-1 mb-2"),
+                    html.Div(id="executive-kpis", className="mb-4 qa-kpi-zone"),
                 ],
-                id="section-wrap-risk-exceptions",
-                className="qa-export-section qa-export-section--risk-kpis",
+                id="section-wrap-executive-overview",
+                className="qa-export-section qa-export-section--overview",
             ),
             # ── TOP: Recommended Actions ───────────────────────────────────────
             html.Section(
@@ -268,25 +268,11 @@ def overview_page(lang: str = "en") -> dbc.Container:
             html.Section(
                 [
                     html.H5(t(lang, "section.top_backlog_risks"), id="section-top-backlog-risks", className="qa-section-title mt-1 mb-2"),
+                    html.Div(id="risk-drivers-panel", className="mb-3"),
                     html.Div(id="physical-signal-exceptions", className="mb-3"),
-                    dbc.Row(
-                        [
-                            dbc.Col(html.Div(id="backlog-aging-summary", className="mb-3"), xs=12, lg=6),
-                            dbc.Col(html.Div(id="stagnant-groups-summary", className="mb-3"), xs=12, lg=6),
-                        ]
-                    ),
                 ],
                 id="section-wrap-top-backlog-risks",
                 className="qa-export-section qa-export-section--risk",
-            ),
-            # ── Executive Overview KPIs ────────────────────────────────────────
-            html.Section(
-                [
-                    html.H5(t(lang, "section.executive_overview"), id="section-executive-overview", className="qa-section-title mt-1 mb-2"),
-                    html.Div(id="executive-kpis", className="mb-4 qa-kpi-zone"),
-                ],
-                id="section-wrap-executive-overview",
-                className="qa-export-section qa-export-section--overview",
             ),
             # ── BOTTOM: Trends (1 weekly + 1 cumulative) ──────────────────────
             html.Section(
@@ -330,14 +316,6 @@ def overview_page(lang: str = "en") -> dbc.Container:
                             ),
                         ]
                     ),
-                    # Secondary charts kept in DOM (hidden) to satisfy callback outputs
-                    html.Div(
-                        [
-                            dcc.Graph(id="weekly-release-weight-graph", config=_GRAPH_CONFIG),
-                            dcc.Graph(id="cumulative-release-weight-graph", config=_GRAPH_CONFIG),
-                        ],
-                        style={"display": "none"},
-                    ),
                 ],
                 id="section-wrap-weekly-management",
                 className="qa-export-section qa-export-section--weekly",
@@ -361,28 +339,6 @@ def overview_page(lang: str = "en") -> dbc.Container:
                             dbc.Col(
                                 dbc.Card(
                                     dbc.CardBody(dcc.Graph(id="snapshot-backlog-trend-graph", config=_GRAPH_CONFIG, style={"height": "320px"})),
-                                    className="qa-panel qa-chart-card h-100",
-                                ),
-                                xs=12,
-                                lg=6,
-                                className="mb-3",
-                            ),
-                        ]
-                    ),
-                    dbc.Row(
-                        [
-                            dbc.Col(
-                                dbc.Card(
-                                    dbc.CardBody(dcc.Graph(id="snapshot-approval-trend-graph", config=_GRAPH_CONFIG, style={"height": "320px"})),
-                                    className="qa-panel qa-chart-card h-100",
-                                ),
-                                xs=12,
-                                lg=6,
-                                className="mb-3",
-                            ),
-                            dbc.Col(
-                                dbc.Card(
-                                    dbc.CardBody(dcc.Graph(id="snapshot-weight-trend-graph", config=_GRAPH_CONFIG, style={"height": "320px"})),
                                     className="qa-panel qa-chart-card h-100",
                                 ),
                                 xs=12,
@@ -477,19 +433,19 @@ def overview_page(lang: str = "en") -> dbc.Container:
             ),
             html.Section(
                 [
-                    html.H5(t(lang, "section.executive_report_pack"), id="section-executive-report-pack", className="qa-section-title mt-2 mb-2"),
-                    html.Div(id="executive-report-pack", className="mb-4"),
-                ],
-                id="section-wrap-executive-report-pack",
-                className="qa-export-section qa-export-section--report",
-            ),
-            html.Section(
-                [
                     html.H5(t(lang, "section.executive_summary"), id="section-executive-summary", className="qa-section-title mt-2 mb-2"),
                     html.Div(id="executive-summary-table", className="mb-4"),
                 ],
                 id="section-wrap-executive-summary",
                 className="qa-export-section qa-export-section--summary",
+            ),
+            html.Section(
+                [
+                    html.H5(t(lang, "section.scope_details"), id="section-scope-details", className="qa-section-title mt-2 mb-2"),
+                    html.Div(id="scope-detail-table", className="mb-4"),
+                ],
+                id="section-wrap-scope-details",
+                className="qa-export-section qa-export-section--secondary",
             ),
             html.Section(
                 [
@@ -502,6 +458,14 @@ def overview_page(lang: str = "en") -> dbc.Container:
                 ],
                 id="section-wrap-quality-signals",
                 className="qa-export-section qa-export-section--secondary",
+            ),
+            html.Section(
+                [
+                    html.H5(t(lang, "section.executive_report_pack"), id="section-executive-report-pack", className="qa-section-title mt-2 mb-2"),
+                    html.Div(id="executive-report-pack", className="mb-4"),
+                ],
+                id="section-wrap-executive-report-pack",
+                className="qa-export-section qa-export-section--report qa-export-only",
             ),
         ],
     )

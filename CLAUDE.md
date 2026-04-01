@@ -44,15 +44,24 @@ make apply      # Apply patch from data/patches/patch.csv (auto-backups)
 
 ### Operational
 ```bash
-make snapshot           # Build and persist weekly KPI snapshot to SQLite
-make audit-kpis         # Print current KPI audit payload
-make inspect-management # Print weekly management payload
+make snapshot                 # Build and persist weekly KPI snapshot to SQLite
+make audit-kpis               # Print current KPI audit payload
+make inspect-management       # Print weekly management payload
+make qa-start                 # Start backend + dashboard with health checks
+make qa-stop                  # Stop backend + dashboard processes
+```
+
+### Piece Signal
+```bash
+python -m scripts.build_piece_signal_outputs   # Build parquet outputs from raw Excel
 ```
 
 ## Architecture
 
 ### Data Flow
-`data/processed/baysa_dossiers_clean.csv` is the single source of truth. It is never edited directly—changes flow through the `make edit` → `make validate` → `make apply` path with auto-backup to `data/processed/backups/`.
+`data/processed/baysa_dossiers_clean.csv` is the single source of truth for dossier KPIs. It is never edited directly — changes flow through the `make edit` → `make validate` → `make apply` path with auto-backup to `data/processed/backups/`.
+
+Piece-level progress data flows from `data/raw/avance_acumulado_global.xlsm` → `piece_signal_service` → parquet files in `data/processed/`.
 
 ### Request Flow
 ```
@@ -63,11 +72,23 @@ Dash components call FastAPI REST endpoints via `requests` library; the dashboar
 
 ### Key Modules
 
-- **[backend/services/dossier_service.py](backend/services/dossier_service.py)** — Core logic: CSV loading/caching, status normalization, KPI computation, and all payload builders (`build_executive_report_payload`, `build_weekly_management_payload`, `build_historical_comparison_payload`).
+- **[backend/services/dossier_service.py](backend/services/dossier_service.py)** — Core logic: CSV loading/caching, status normalization, KPI computation, and all payload builders (`build_executive_report_payload`, `build_weekly_management_payload`, `build_historical_comparison_payload`, `build_snapshot_payload`, `build_weight_kpi_audit_payload`).
+- **[backend/services/piece_signal_service.py](backend/services/piece_signal_service.py)** — Piece-level progress signal: parses raw Excel, derives block/family/stage, writes parquet outputs (`piece_clean`, `block_summary`, `week_summary`, `exceptions`).
 - **[backend/routers/](backend/routers/)** — FastAPI route handlers (dossiers, metrics, welds, concrete, ncforms).
-- **[dashboard/components/](dashboard/components/)** — Dash UI: `cards.py` (tables/summaries), `figures.py` (Plotly charts), `executive_header.py` (status bar).
+- **[dashboard/app.py](dashboard/app.py)** — Dash entry point; imports from `dossier_service` directly for SSR data.
+- **[dashboard/pages/overview.py](dashboard/pages/overview.py)** — Main overview page layout with scope selector (PRO / SUE / all) and filter dropdowns.
+- **[dashboard/callbacks/dossier_callbacks.py](dashboard/callbacks/dossier_callbacks.py)** — All interactive Dash callbacks; fetches data from FastAPI `/api/dossiers`.
+- **[dashboard/layouts/](dashboard/layouts/)** — `main_layout.py` (shell), `dossier_layout.py` (dossier control page).
+- **[dashboard/components/](dashboard/components/)** — Dash UI components:
+  - `cards.py` — KPI cards, summary tables, management/comparison cards, risk/insight panels.
+  - `figures.py` — Plotly charts (progress, stage/block status, weekly trends, cumulative growth).
+  - `kpi_cards.py` — Compact KPI row widget.
+  - `executive_header.py` — Top status bar.
+  - `export_shell.py` — Export shell component.
+- **[dashboard/i18n.py](dashboard/i18n.py)** — Centralized UI label translations (EN/ES).
 - **[database/models.py](database/models.py)** — SQLAlchemy ORM: `Dossier`, `WeldJoint`, `ConcreteTest`, `NCForm`, `AuditLog`, `WeeklySnapshot`.
 - **[tools/csv_guard.py](tools/csv_guard.py)** — CSV schema validation and safe patch application.
+- **[scripts/maintenance/](scripts/maintenance/)** — Operational scripts: `backup_helper.py`, `prune_storage.py`, `validar_integridad.py`, `estado_sistema.py`.
 
 ### KPI Scope Rules
 
@@ -78,6 +99,14 @@ Status normalization in `dossier_service._normalise_status()` maps raw contracto
 - `pending` / `observado` → `PENDING`
 - `in_review` / `revisión inpros` → `IN_REVIEW` (internal review, not a rejection)
 - `fuera de alcance` → `OUT_OF_SCOPE` (excluded from KPIs)
+
+### Contract Groups
+
+`apply_contract_scope_rules()` derives a `contract_group` column:
+- `"new_contract"` — SUE Stage 4 blocks not released by the cutoff week (`_NEW_CONTRACT_CUTOFF_WEEK`).
+- `"original"` — all other in-scope rows.
+
+The dashboard overview page exposes a scope-selector radio to filter views by contract group.
 
 ### Weekly Snapshots
 

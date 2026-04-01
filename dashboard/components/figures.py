@@ -295,7 +295,11 @@ def status_by_stage_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
                 y=grouped[status],
                 marker_color=_STATUS_COLORS[status],
                 text=grouped[status].where(grouped[status] > 0).astype("Int64").astype(str).replace("<NA>", ""),
-                textposition="inside",
+                textposition="auto",
+                insidetextfont={"size": 12, "color": "#ffffff"},
+                outsidetextfont={"size": 12, "color": "#1f2937"},
+                cliponaxis=False,
+                constraintext="none",
             )
         )
     fig.update_layout(
@@ -305,6 +309,8 @@ def status_by_stage_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
         ),
         xaxis_title=t(lang, "figure.status_by_stage.x"),
         yaxis_title=t(lang, "figure.status_by_stage.y"),
+        uniformtext_minsize=11,
+        uniformtext_mode="hide",
     )
     return fig
 
@@ -337,7 +343,11 @@ def status_by_block_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
                 y=grouped[status],
                 marker_color=_STATUS_COLORS[status],
                 text=grouped[status].where(grouped[status] > 0).astype("Int64").astype(str).replace("<NA>", ""),
-                textposition="inside",
+                textposition="auto",
+                insidetextfont={"size": 12, "color": "#ffffff"},
+                outsidetextfont={"size": 12, "color": "#1f2937"},
+                cliponaxis=False,
+                constraintext="none",
             )
         )
     fig.update_layout(
@@ -347,6 +357,8 @@ def status_by_block_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
         ),
         xaxis_title=t(lang, "figure.status_by_family.x"),
         yaxis_title=t(lang, "figure.status_by_family.y"),
+        uniformtext_minsize=11,
+        uniformtext_mode="hide",
     )
     return fig
 
@@ -372,6 +384,8 @@ def weekly_progress_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
             grouped[s] = 0
     # Sort chronologically by the numeric part of the label.
     grouped = grouped.loc[sorted(grouped.index, key=lambda x: int(x[1:]))]
+    if len(grouped) > 12:
+        grouped = grouped.tail(12)
 
     fig = go.Figure()
     for status in ("approved", "pending", "in_review"):
@@ -392,7 +406,7 @@ def weekly_progress_figure(df: pd.DataFrame, lang: str = "en") -> go.Figure:
         template="plotly_white",
         barmode="group",
         title={
-            "text": t(lang, "figure.weekly_status.title"),
+            "text": t(lang, "figure.weekly_status.title") + f"<br><sup>{t(lang, 'figure.weekly_status.window')}</sup>",
             "x": 0.01,
             "y": 0.97,
             "yanchor": "top",
@@ -489,6 +503,8 @@ def weekly_released_dossiers_figure(payload: Dict[str, Any], lang: str = "en") -
             marker_color=_STATUS_COLORS["approved"],
             text=release_series["released_dossiers"].where(release_series["released_dossiers"] > 0).astype("Int64").astype(str).replace("<NA>", ""),
             textposition="outside",
+            textfont={"size": 12, "color": "#1f2937"},
+            cliponaxis=False,
         )
     )
     fig.update_layout(
@@ -514,6 +530,8 @@ def weekly_released_weight_figure(payload: Dict[str, Any], lang: str = "en") -> 
             marker_color="#0f6cbd",
             text=release_series["released_weight_t"].apply(lambda value: f"{float(value):.1f}" if float(value) > 0 else ""),
             textposition="outside",
+            textfont={"size": 12, "color": "#1f2937"},
+            cliponaxis=False,
         )
     )
     fig.update_layout(
@@ -793,8 +811,11 @@ def new_contract_progress_figure(blocks: list[Dict[str, Any]], lang: str = "en")
         y=names, x=lib, orientation="h",
         marker_color="#2e8540",
         text=[f"{v:.1f}%" if v > 5 else "" for v in lib],
-        textposition="inside",
+        textposition="auto",
         insidetextfont={"color": "#fff", "size": 11},
+        outsidetextfont={"color": "#1f2937", "size": 11},
+        cliponaxis=False,
+        constraintext="none",
         hovertemplate="%{y}: %{x:.1f}% liberado<extra></extra>",
     ))
     # 2. Soldado but not released (blue)
@@ -803,8 +824,11 @@ def new_contract_progress_figure(blocks: list[Dict[str, Any]], lang: str = "en")
         y=names, x=sold, orientation="h",
         marker_color="#2d6fb7",
         text=[f"{v:.1f}%" if v > 5 else "" for v in sold],
-        textposition="inside",
+        textposition="auto",
         insidetextfont={"color": "#fff", "size": 11},
+        outsidetextfont={"color": "#1f2937", "size": 11},
+        cliponaxis=False,
+        constraintext="none",
         hovertemplate="%{y}: %{x:.1f}% soldado (no liberado)<extra></extra>",
     ))
     # 3. Assembled but not welded (light blue-gray)
@@ -813,8 +837,11 @@ def new_contract_progress_figure(blocks: list[Dict[str, Any]], lang: str = "en")
         y=names, x=mont, orientation="h",
         marker_color="#9db4c7",
         text=[f"{v:.1f}%" if v > 5 else "" for v in mont],
-        textposition="inside",
+        textposition="auto",
         insidetextfont={"color": "#333", "size": 11},
+        outsidetextfont={"color": "#1f2937", "size": 11},
+        cliponaxis=False,
+        constraintext="none",
         hovertemplate="%{y}: %{x:.1f}% montado (no soldado)<extra></extra>",
     ))
     # 4. Assembly pending (very light gray)
@@ -824,8 +851,11 @@ def new_contract_progress_figure(blocks: list[Dict[str, Any]], lang: str = "en")
         marker_color="#e8edf2",
         marker_line={"color": "#c8d4de", "width": 0.5},
         text=[f"{v:.1f}%" if v > 5 else "" for v in pend],
-        textposition="inside",
+        textposition="auto",
         insidetextfont={"color": "#999", "size": 10},
+        outsidetextfont={"color": "#1f2937", "size": 10},
+        cliponaxis=False,
+        constraintext="none",
         hovertemplate="%{y}: %{x:.1f}% pendiente montaje<extra></extra>",
     ))
 
@@ -866,6 +896,8 @@ def new_contract_progress_figure(blocks: list[Dict[str, Any]], lang: str = "en")
             "font": {"size": 10},
         },
         margin={"l": 12, "r": 12, "t": 90, "b": 36},
+        uniformtext_minsize=10,
+        uniformtext_mode="hide",
     )
     # Add footnote AFTER update_layout so it appends rather than replaces
     # the commitment-date annotations already added in the loop above.

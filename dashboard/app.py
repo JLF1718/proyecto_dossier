@@ -31,17 +31,16 @@ from backend.services.dossier_service import (
 from backend.services.piece_signal_service import load_piece_signal_payload
 
 from dashboard.components.cards import (
-    backlog_aging_summary,
     executive_report_pack,
-    executive_cards,
     executive_summary_table,
     physical_signal_cards,
     physical_signal_comparison_table,
     physical_signal_exceptions_table,
     historical_comparison_cards,
     quality_cards,
-    risk_exception_cards,
-    stagnant_groups_summary,
+    risk_drivers_panel,
+    scope_detail_table,
+    stakeholder_overview_cards,
     weekly_management_cards,
 )
 from dashboard.components.executive_header import (
@@ -53,22 +52,18 @@ from dashboard.components.executive_header import (
 from dashboard.components.figures import (
     build_new_contract_figure_blocks,
     cumulative_approved_growth_figure,
-    cumulative_released_weight_growth_figure,
     derive_building_family,
     derive_stage_category,
     empty_figure,
     executive_summary_frame,
     new_contract_progress_figure,
     new_contract_timeline_figure,
-    snapshot_approval_trend_figure,
     snapshot_backlog_trend_figure,
     snapshot_released_trend_figure,
-    snapshot_released_weight_trend_figure,
     physical_signal_weekly_trend_figure,
     status_by_block_figure,
     status_by_stage_figure,
     weekly_released_dossiers_figure,
-    weekly_released_weight_figure,
     weekly_accumulated_progress_figure,
     weekly_progress_figure,
 )
@@ -229,10 +224,10 @@ def update_language_store(language_value: Optional[str]) -> Dict[str, str]:
     Output("section-executive-overview", "children"),
     Output("section-weekly-management", "children"),
     Output("section-physical-signal", "children"),
-    Output("section-risk-exceptions", "children"),
     Output("section-historical-comparison", "children"),
     Output("section-dossier-analysis", "children"),
     Output("section-executive-summary", "children"),
+    Output("section-scope-details", "children"),
     Output("section-executive-report-pack", "children"),
     Output("section-quality-signals", "children"),
     Output("filter-contractor-label", "children"),
@@ -299,10 +294,10 @@ def update_static_labels(language_store: Optional[Dict[str, str]]):
         t(lang, "section.executive_overview"),
         t(lang, "section.weekly_management"),
         t(lang, "section.physical_signal"),
-        t(lang, "section.risk_exceptions"),
         t(lang, "section.historical_comparison"),
         t(lang, "section.dossier_analysis"),
         t(lang, "section.executive_summary"),
+        t(lang, "section.scope_details"),
         t(lang, "section.executive_report_pack"),
         t(lang, "section.quality_signals"),
         contractor,
@@ -355,11 +350,19 @@ def update_presentation_mode(toggle_value: Optional[list[str]]) -> str:
     return "qa-shell qa-export-ready" if is_presentation else "qa-shell"
 
 
-def _section_visibility_styles(scope_view: Optional[str]) -> list[Dict[str, str]]:
+@app.callback(
+    Output("filter-compare-week", "disabled"),
+    Input("management-history-toggle", "value"),
+)
+def toggle_compare_week_filter(toggle_value: Optional[list[str]]) -> bool:
+    return not (bool(toggle_value) and "on" in toggle_value)
+
+
+def _section_visibility_styles(scope_view: Optional[str], history_toggle: Optional[list[str]]) -> list[Dict[str, str]]:
     scope = scope_view or "reduced"
+    history_mode = bool(history_toggle) and "on" in history_toggle
     section_ids = [
         "section-wrap-exec-status",
-        "section-wrap-risk-exceptions",
         "section-wrap-recommended-actions",
         "section-wrap-top-backlog-risks",
         "section-wrap-executive-overview",
@@ -367,50 +370,54 @@ def _section_visibility_styles(scope_view: Optional[str]) -> list[Dict[str, str]
         "section-wrap-historical-comparison",
         "section-wrap-dossier-analysis",
         "section-wrap-new-contract",
-        "section-wrap-executive-report-pack",
         "section-wrap-executive-summary",
+        "section-wrap-scope-details",
+        "section-wrap-executive-report-pack",
         "section-wrap-quality-signals",
     ]
 
     visibility_profiles = {
         "original": {
             "section-wrap-exec-status",
-            "section-wrap-risk-exceptions",
             "section-wrap-recommended-actions",
             "section-wrap-top-backlog-risks",
             "section-wrap-executive-overview",
             "section-wrap-weekly-management",
-            "section-wrap-historical-comparison",
             "section-wrap-dossier-analysis",
-            "section-wrap-executive-report-pack",
             "section-wrap-executive-summary",
+            "section-wrap-scope-details",
+            "section-wrap-executive-report-pack",
             "section-wrap-quality-signals",
         },
         "reduced": {
             "section-wrap-exec-status",
-            "section-wrap-risk-exceptions",
             "section-wrap-recommended-actions",
             "section-wrap-top-backlog-risks",
             "section-wrap-executive-overview",
             "section-wrap-weekly-management",
             "section-wrap-dossier-analysis",
             "section-wrap-executive-summary",
+            "section-wrap-scope-details",
+            "section-wrap-executive-report-pack",
         },
         "new_contract": {
             "section-wrap-exec-status",
             "section-wrap-executive-overview",
             "section-wrap-new-contract",
+            "section-wrap-scope-details",
         },
     }
 
     visible = visibility_profiles.get(scope, visibility_profiles["reduced"])
+    if history_mode and scope == "original":
+        visible = set(visible)
+        visible.add("section-wrap-historical-comparison")
 
     return [{} if section_id in visible else {"display": "none"} for section_id in section_ids]
 
 
 @app.callback(
     Output("section-wrap-exec-status", "style"),
-    Output("section-wrap-risk-exceptions", "style"),
     Output("section-wrap-recommended-actions", "style"),
     Output("section-wrap-top-backlog-risks", "style"),
     Output("section-wrap-executive-overview", "style"),
@@ -418,13 +425,15 @@ def _section_visibility_styles(scope_view: Optional[str]) -> list[Dict[str, str]
     Output("section-wrap-historical-comparison", "style"),
     Output("section-wrap-dossier-analysis", "style"),
     Output("section-wrap-new-contract", "style"),
-    Output("section-wrap-executive-report-pack", "style"),
     Output("section-wrap-executive-summary", "style"),
+    Output("section-wrap-scope-details", "style"),
+    Output("section-wrap-executive-report-pack", "style"),
     Output("section-wrap-quality-signals", "style"),
+    Input("management-history-toggle", "value"),
     Input("scope-selector", "value"),
 )
-def update_scope_section_visibility(scope_view: Optional[str]):
-    return _section_visibility_styles(scope_view)
+def update_scope_section_visibility(history_toggle: Optional[list[str]], scope_view: Optional[str]):
+    return _section_visibility_styles(scope_view, history_toggle)
 
 
 @app.callback(
@@ -436,20 +445,14 @@ def update_scope_section_visibility(scope_view: Optional[str]):
     Output("executive-kpis", "children"),
     Output("weekly-management-kpis", "children"),
     Output("physical-signal-kpis", "children"),
-    Output("risk-exception-kpis", "children"),
     Output("historical-comparison-kpis", "children"),
     Output("quality-kpis", "children"),
     Output("physical-signal-weekly-graph", "figure"),
     Output("weekly-release-count-graph", "figure"),
-    Output("weekly-release-weight-graph", "figure"),
     Output("cumulative-approved-growth-graph", "figure"),
-    Output("cumulative-release-weight-graph", "figure"),
     Output("snapshot-release-trend-graph", "figure"),
     Output("snapshot-backlog-trend-graph", "figure"),
-    Output("snapshot-approval-trend-graph", "figure"),
-    Output("snapshot-weight-trend-graph", "figure"),
-    Output("backlog-aging-summary", "children"),
-    Output("stagnant-groups-summary", "children"),
+    Output("risk-drivers-panel", "children"),
     Output("physical-signal-exceptions", "children"),
     Output("physical-signal-comparison-table", "children"),
     Output("stage-status-graph", "figure"),
@@ -457,6 +460,7 @@ def update_scope_section_visibility(scope_view: Optional[str]):
     Output("weekly-progress-graph", "figure"),
     Output("weekly-accum-graph", "figure"),
     Output("executive-summary-table", "children"),
+    Output("scope-detail-table", "children"),
     Output("executive-report-pack", "children"),
     Output("exec-status-header", "children"),
     Output("recommended-actions-block", "children"),
@@ -470,6 +474,7 @@ def update_scope_section_visibility(scope_view: Optional[str]):
     Input("management-history-toggle", "value"),
     Input("filter-compare-week", "value"),
     Input("scope-selector", "value"),
+    Input("presentation-mode-toggle", "value"),
 )
 def update_dashboard(
     language_store: Optional[Dict[str, str]],
@@ -480,6 +485,7 @@ def update_dashboard(
     history_toggle: Optional[list[str]],
     compare_week: Optional[str],
     scope_view: Optional[str],
+    presentation_toggle: Optional[list[str]],
 ):
     lang = normalize_lang((language_store or {}).get("lang"))
     local_df = _load_local_dossier_csv()
@@ -511,6 +517,7 @@ def update_dashboard(
         include_out_of_scope=True,
     )
     summary_table = executive_summary_table(executive_summary_frame(summary_filtered), lang=lang)
+    detail_table = scope_detail_table(summary_filtered, lang=lang)
     management_filtered = _apply_local_csv_filters(
         scope_df,
         contractor=contractor,
@@ -553,21 +560,27 @@ def update_dashboard(
     ]
 
     history_mode = bool(history_toggle) and "on" in history_toggle
+    export_mode = bool(presentation_toggle) and "on" in presentation_toggle
     effective_compare_week = compare_week if history_mode else None
-    historical_payload = build_historical_comparison_payload(
-        management_filtered,
-        selected_week=week,
-        comparison_week=effective_compare_week,
-    )
-    report_payload = build_executive_report_payload(
-        management_filtered,
-        selected_week=week,
-        comparison_week=effective_compare_week,
-        language=lang,
-    )
+    historical_payload: Dict[str, Any] = {}
+    if history_mode and scope == "original":
+        historical_payload = build_historical_comparison_payload(
+            management_filtered,
+            selected_week=week,
+            comparison_week=effective_compare_week,
+        )
+
+    report_payload: Dict[str, Any] = {}
+    if export_mode and scope != "new_contract":
+        report_payload = build_executive_report_payload(
+            management_filtered,
+            selected_week=week,
+            comparison_week=effective_compare_week,
+            language=lang,
+        )
 
     piece_payload = {"kpis": {}, "week_summary": [], "comparison": [], "exceptions": []}
-    if _PHYSICAL_SIGNAL_ENABLED:
+    if _PHYSICAL_SIGNAL_ENABLED and scope != "new_contract":
         raw_piece = load_piece_signal_payload(rebuild_if_missing=True)
         comparison_df = raw_piece.get("comparison", pd.DataFrame()).copy()
         week_df = raw_piece.get("week_summary", pd.DataFrame()).copy()
@@ -597,23 +610,17 @@ def update_dashboard(
         system_options,
         week_options,
         snapshot_options,
-        executive_cards(kpi_payload, lang=lang),
+        stakeholder_overview_cards(kpi_payload, weekly_payload, lang=lang),
         weekly_management_cards(weekly_payload, lang=lang),
         physical_signal_cards(piece_payload, lang=lang),
-        risk_exception_cards(weekly_payload, lang=lang),
         historical_comparison_cards(historical_payload, lang=lang),
         quality_cards(kpi_payload, lang=lang),
         physical_signal_weekly_trend_figure(piece_payload, lang=lang),
         weekly_released_dossiers_figure(weekly_payload, lang=lang),
-        weekly_released_weight_figure(weekly_payload, lang=lang),
         cumulative_approved_growth_figure(weekly_payload, lang=lang),
-        cumulative_released_weight_growth_figure(weekly_payload, lang=lang),
         snapshot_released_trend_figure(historical_payload, lang=lang),
         snapshot_backlog_trend_figure(historical_payload, lang=lang),
-        snapshot_approval_trend_figure(historical_payload, lang=lang),
-        snapshot_released_weight_trend_figure(historical_payload, lang=lang),
-        backlog_aging_summary(weekly_payload, lang=lang),
-        stagnant_groups_summary(weekly_payload, lang=lang),
+        risk_drivers_panel(weekly_payload, lang=lang),
         physical_signal_exceptions_table(piece_payload, lang=lang),
         physical_signal_comparison_table(piece_payload, lang=lang),
         status_by_stage_figure(local_filtered, lang=lang),
@@ -621,6 +628,7 @@ def update_dashboard(
         weekly_progress_figure(local_filtered, lang=lang),
         weekly_accumulated_progress_figure(local_filtered, lang=lang),
         summary_table,
+        detail_table,
         executive_report_pack(report_payload, lang=lang),
         executive_status_header(
             compute_executive_status(weekly_payload, kpi_payload),
@@ -901,8 +909,14 @@ app.index_string = """
             .qa-export-section--secondary {
                 opacity: .84;
             }
+            .qa-export-only {
+                display: none;
+            }
             .qa-export-ready {
                 background: #f5f8fb;
+            }
+            .qa-export-ready .qa-export-only {
+                display: block;
             }
             .qa-export-ready .qa-export-banner {
                 display: block;
@@ -935,6 +949,14 @@ app.index_string = """
             }
             .qa-export-ready .modebar {
                 display: none !important;
+            }
+            .qa-risk-tabs .nav-link {
+                color: #1f4e79;
+                font-weight: 600;
+            }
+            .qa-risk-tabs .nav-link.active {
+                color: #10222f;
+                background: #ffffff;
             }
       .qa-panel {
                 border: 1px solid rgba(157,180,199,.48);
@@ -1015,6 +1037,9 @@ app.index_string = """
                 }
                 .qa-export-section--secondary {
                     display: none !important;
+                }
+                .qa-export-only {
+                    display: block !important;
                 }
                 .qa-export-section--weekly,
                 .qa-export-section--risk,
