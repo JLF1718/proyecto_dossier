@@ -251,7 +251,7 @@ _TRANSLATIONS = {
         "alignment.physical_signal_present_but_no_dossier_context": "Physical signal present but no dossier context",
         "alignment.dossier_context_present_but_no_piece_signal": "Dossier context present but no piece signal",
         "section.new_contract": "New Contract — SUE Stage 4",
-        "figure.nc_progress.title": "New Contract — Physical Progress (ref. Week 184)",
+        "figure.nc_progress.title": "New Contract — Physical Progress",
         "figure.nc_progress.x": "Progress (%)",
         "figure.nc_progress.note": "* Outside budget scope (no commitment date)",
         "figure.nc_timeline.title": "New Contract — Commitment Schedule",

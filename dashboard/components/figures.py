@@ -733,18 +733,29 @@ def snapshot_released_weight_trend_figure(payload: Dict[str, Any], lang: str = "
 
 
 # ── New Contract milestone figures ───────────────────────────────────────────
-# Physical progress baselines from Excel "Avances Semanales" at Semana 184.
-# Commitment weeks derived from Excel "Cuadro de Alcances Nuevos".
-_NEW_CONTRACT_BASELINES: Dict[str, Dict[str, Any]] = {
-    "SUE_74": {"montaje": 93.7, "soldadura": 84.6, "liberacion": 30.9, "commitment_week": 197, "commitment_date": "4 abr", "in_budget": True},
-    "SUE_75": {"montaje": 99.8, "soldadura": 79.2, "liberacion": 5.8, "commitment_week": 200, "commitment_date": "30 abr", "in_budget": True},
-    "SUE_84": {"montaje": 78.9, "soldadura": 72.6, "liberacion": 53.7, "commitment_week": None, "commitment_date": "—", "in_budget": False},
-    "SUE_85": {"montaje": 80.3, "soldadura": 69.9, "liberacion": 0.0, "commitment_week": None, "commitment_date": "—", "in_budget": False},
-    "SUE_88": {"montaje": 96.7, "soldadura": 95.8, "liberacion": 52.6, "commitment_week": 197, "commitment_date": "4 abr", "in_budget": True},
-    "SUE_94": {"montaje": 94.5, "soldadura": 63.4, "liberacion": 41.0, "commitment_week": 204, "commitment_date": "25 may", "in_budget": True},
-    "SUE_95": {"montaje": 91.3, "soldadura": 59.3, "liberacion": 36.0, "commitment_week": 204, "commitment_date": "23 may", "in_budget": True},
-    "SUE_96": {"montaje": 65.5, "soldadura": 32.7, "liberacion": 0.0, "commitment_week": 204, "commitment_date": "25 may·S1 / 18 abr·S2", "in_budget": True, "milestone2_week": 199, "milestone2_date": "18 abr·S2"},
+# Authoritative reference for the 16 blocks in the new contract scope.
+# hito_semana values are taken from the official "Nuevo Alcance" reference table.
+NUEVO_ALCANCE: Dict[str, Dict[str, Any]] = {
+    "SUE_70": {"fase": 1, "etapa": 3, "hito": 204},
+    "SUE_72": {"fase": 1, "etapa": 4, "hito": 204},
+    "SUE_73": {"fase": 1, "etapa": 4, "hito": 206},
+    "SUE_74": {"fase": 1, "etapa": 4, "hito": 207},
+    "SUE_75": {"fase": 1, "etapa": 4, "hito": 199},
+    "SUE_78": {"fase": 1, "etapa": 4, "hito": 194},
+    "SUE_80": {"fase": 1, "etapa": 4, "hito": 198},
+    "SUE_81": {"fase": 1, "etapa": 4, "hito": 198},
+    "SUE_86": {"fase": 1, "etapa": 4, "hito": 203},
+    "SUE_87": {"fase": 1, "etapa": 4, "hito": 207},
+    "SUE_88": {"fase": 1, "etapa": 4, "hito": 204},
+    "SUE_89": {"fase": 1, "etapa": 4, "hito": 208},
+    "SUE_91": {"fase": 1, "etapa": 4, "hito": 196},
+    "SUE_94": {"fase": 1, "etapa": 4, "hito": 208},
+    "SUE_95": {"fase": 1, "etapa": 4, "hito": 208},
+    "SUE_96": {"fase": 1, "etapa": 4, "hito": 202},
 }
+
+# Legacy alias kept for internal callers that referenced the old dict.
+_NEW_CONTRACT_BASELINES: Dict[str, Dict[str, Any]] = {}
 
 
 def _resolve_week_number(value: object) -> Optional[int]:
@@ -755,13 +766,14 @@ def _resolve_week_number(value: object) -> Optional[int]:
 
 
 def build_new_contract_figure_blocks(df: pd.DataFrame, analysis_week: object = None) -> list[Dict[str, Any]]:
-    """Build dynamic new-contract blocks from the current filtered dataset."""
+    """Build new-contract blocks restricted to the 16 NUEVO_ALCANCE blocks."""
     if df.empty or "bloque" not in df.columns:
         return []
 
     work = df.copy()
     work["block"] = _normalize_bloque(work.get("bloque", pd.Series(index=work.index, dtype=object)))
-    work = work[work["block"].ne("")].copy()
+    # Keep only the authoritative 16 blocks
+    work = work[work["block"].isin(NUEVO_ALCANCE.keys())].copy()
     if work.empty:
         return []
 
@@ -775,27 +787,28 @@ def build_new_contract_figure_blocks(df: pd.DataFrame, analysis_week: object = N
     current_week = _resolve_week_number(analysis_week)
     if current_week is None:
         release_max = work["release_week_num"].dropna()
-        reference_max = pd.to_numeric(work.get("hito_semana", pd.Series(index=work.index, dtype=object)), errors="coerce").dropna()
         if not release_max.empty:
             current_week = int(release_max.max())
-        elif not reference_max.empty:
-            current_week = int(reference_max.max())
         else:
-            current_week = 195
+            current_week = max(v["hito"] for v in NUEVO_ALCANCE.values())
 
     blocks: list[Dict[str, Any]] = []
     for row in work.itertuples(index=False):
         block = row.block
-        block_data = dict(_NEW_CONTRACT_BASELINES.get(block, {}))
+        ref = NUEVO_ALCANCE[block]
+        hito = ref["hito"]
         release_week = None if pd.isna(row.release_week_num) else int(row.release_week_num)
         is_released = row.status_class == "approved" and release_week is not None and release_week <= current_week
 
-        block_data.setdefault("montaje", 0.0)
-        block_data.setdefault("soldadura", 0.0)
-        block_data.setdefault("liberacion", 0.0)
-        block_data.setdefault("commitment_week", release_week)
-        block_data.setdefault("commitment_date", f"W{release_week}" if release_week is not None else "—")
-        block_data.setdefault("in_budget", True)
+        block_data: Dict[str, Any] = {
+            "montaje": 0.0,
+            "soldadura": 0.0,
+            "liberacion": 0.0,
+            "commitment_week": hito,
+            "commitment_date": f"W{hito}",
+            "in_budget": True,
+            "hito": hito,
+        }
 
         if is_released:
             block_data.update(
@@ -813,11 +826,7 @@ def build_new_contract_figure_blocks(df: pd.DataFrame, analysis_week: object = N
 
     return sorted(
         blocks,
-        key=lambda item: (
-            item.get("commitment_week") is None,
-            item.get("commitment_week") or 999,
-            item["block"],
-        ),
+        key=lambda item: (item.get("hito") or 999, item["block"]),
     )
 
 
@@ -889,24 +898,25 @@ def new_contract_progress_figure(blocks: list[Dict[str, Any]], lang: str = "en")
         hovertemplate="%{y}: %{x:.1f}% pendiente montaje<extra></extra>",
     ))
 
-    # Commitment date annotations (right of 100% bar)
+    # Hito-week annotations (right of 100% bar): "W{hito}" from NUEVO_ALCANCE
     for d in blocks:
-        label = d["commitment_date"]
-        color = "#b83227" if not d["in_budget"] else "#0b2a4a"
-        suffix = " *" if not d["in_budget"] else ""
+        hito = d.get("hito") or d.get("commitment_week")
+        label = f"W{hito}" if hito else d.get("commitment_date", "—")
+        if d.get("liberacion", 0) >= 100:
+            label = f"Liberado {label}"
         fig.add_annotation(
             x=102, y=d["block"],
-            text=f"{label}{suffix}",
+            text=label,
             showarrow=False,
             xanchor="left",
-            font={"size": 9, "color": color},
+            font={"size": 9, "color": "#0b2a4a"},
         )
 
     fig.update_layout(
         barmode="stack",
         template="plotly_white",
         title={
-            "text": t(lang, "figure.nc_progress.title"),
+            "text": "New Contract — Physical Progress<br><sup>16 blocks · FASE 1 · ETAPA 3-4</sup>",
             "x": 0.01, "y": 0.98, "yanchor": "top",
         },
         xaxis={
@@ -939,6 +949,13 @@ def new_contract_progress_figure(blocks: list[Dict[str, Any]], lang: str = "en")
         font={"size": 9, "color": "#888"},
     )
     return fig
+
+
+def physical_progress_figure(df: pd.DataFrame, lang: str = "en", analysis_week: object = None) -> go.Figure:
+    """Convenience wrapper: filter df to NUEVO_ALCANCE blocks and render the progress chart."""
+    nc_df = df[df["bloque"].isin(NUEVO_ALCANCE.keys())].copy() if "bloque" in df.columns else df
+    blocks = build_new_contract_figure_blocks(nc_df, analysis_week=analysis_week)
+    return new_contract_progress_figure(blocks, lang=lang)
 
 
 def new_contract_timeline_figure(blocks: list[Dict[str, Any]], lang: str = "en", analysis_week: object = None) -> go.Figure:
