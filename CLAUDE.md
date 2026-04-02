@@ -122,6 +122,17 @@ Snapshots are persisted to SQLite `weekly_snapshots` table on demand (`make snap
 
 ## Known Issues & Fixes
 
+### make dev fails when port 8000 is busy (run_dev.sh)
+**Date resolved:** 2026-04-01
+**Affected script:** `run_dev.sh`
+
+| Issue | Root cause | Fix |
+|---|---|---|
+| `make dev` aborted if `8000`/`8050` was used by another project | `run_dev.sh` treated non-project listeners as fatal | Added automatic fallback to next free port (scan forward), while still stopping project-owned stale listeners |
+| Dash could point to wrong API when FastAPI port changed | Dash callbacks default to `QA_API_BASE=http://127.0.0.1:8000` | `run_dev.sh` now exports `QA_API_BASE` with the resolved FastAPI port when starting Dash |
+
+**Rule going forward:** For local development launchers, external port conflicts must not be fatal by default. Resolve to a free local port and print the effective URLs.
+
 ### Stacked bar label rendering (figures.py)
 **Date resolved:** 2026-04-01
 **Affected functions:** `status_by_stage_figure`, `status_by_block_figure`

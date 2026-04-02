@@ -116,6 +116,24 @@ port_listener_pids() {
     return 1
 }
 
+find_next_available_port() {
+    local start_port="$1"
+    local max_attempts="${2:-50}"
+
+    local port="$start_port"
+    local tries=0
+    while (( tries < max_attempts )); do
+        if [[ -z "$(port_listener_pids "$port" || true)" ]]; then
+            echo "$port"
+            return 0
+        fi
+        port=$((port + 1))
+        tries=$((tries + 1))
+    done
+
+    return 1
+}
+
 cleanup_project_listener_on_port() {
     local label="$1"
     local port="$2"
@@ -135,28 +153,50 @@ cleanup_project_listener_on_port() {
     fi
 }
 
-ensure_port_available() {
+resolve_port() {
     local label="$1"
-    local port="$2"
+    local requested_port="$2"
 
-    cleanup_project_listener_on_port "$label" "$port"
+    cleanup_project_listener_on_port "$label" "$requested_port"
 
     local remaining
-    remaining="$(port_listener_pids "$port" || true)"
+    remaining="$(port_listener_pids "$requested_port" || true)"
     if [[ -n "$remaining" ]]; then
-        echo "[ERROR] Port ${port} is already in use by a non-project process."
+        echo "[WARN] Port ${requested_port} is in use by a non-project process." >&2
         echo "$remaining" | while IFS= read -r pid; do
             [[ -z "$pid" ]] && continue
-            echo "[ERROR] PID ${pid}: $(pid_command "$pid")"
+            echo "[WARN] PID ${pid}: $(pid_command "$pid")" >&2
         done
-        exit 1
+
+        local candidate_port
+        candidate_port="$(find_next_available_port "$((requested_port + 1))" 100 || true)"
+        if [[ -z "$candidate_port" ]]; then
+            echo "[ERROR] Could not find an available port for ${label} near ${requested_port}." >&2
+            exit 1
+        fi
+
+        echo "[WARN] ${label} will use fallback port ${candidate_port}." >&2
+        echo "$candidate_port"
+        return 0
     fi
+
+    echo "$requested_port"
 }
 
 cleanup_stale_pid_file "$BACKEND_PID_FILE"
 cleanup_stale_pid_file "$DASHBOARD_PID_FILE"
-ensure_port_available "FastAPI" "$FASTAPI_PORT"
-ensure_port_available "Dash" "$DASH_PORT"
+FASTAPI_PORT="$(resolve_port "FastAPI" "$FASTAPI_PORT")"
+DASH_PORT="$(resolve_port "Dash" "$DASH_PORT")"
+
+if [[ "$DASH_PORT" == "$FASTAPI_PORT" ]]; then
+    alt_dash_port="$(find_next_available_port "$((DASH_PORT + 1))" 100 || true)"
+    if [[ -z "$alt_dash_port" ]]; then
+        echo "[ERROR] Dash and FastAPI resolved to the same port (${DASH_PORT}) and no alternative was found." >&2
+        exit 1
+    fi
+    echo "[WARN] Dash port matched FastAPI port; switching Dash to ${alt_dash_port}." >&2
+    DASH_PORT="$alt_dash_port"
+fi
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  QA Platform — Development Mode"
@@ -196,6 +236,9 @@ echo "[API] FastAPI started (PID ${FASTAPI_PID})"
 sleep 2
 
 # Start Dash in foreground
+QA_API_BASE="http://127.0.0.1:${FASTAPI_PORT}" \
+DASH_HOST="0.0.0.0" \
+DASH_PORT="$DASH_PORT" \
 "$PYTHON_BIN" dashboard/app.py &
 DASH_PID=$!
 echo "$DASH_PID" > "$DASHBOARD_PID_FILE"
