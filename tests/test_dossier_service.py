@@ -6,9 +6,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pandas as pd
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+import backend.services.dossier_service as dossier_service
+from backend.main import app
+import backend.routers.metrics as metrics_router
 from backend.services.dossier_service import (
     _build_backlog_aging_frame,
     _build_cumulative_weekly_growth,
@@ -22,6 +26,7 @@ from backend.services.dossier_service import (
     build_or_update_weekly_snapshot,
     build_weekly_management_payload,
     compute_kpis,
+    load_juntas_nuevo_alcance,
     list_weekly_snapshots,
 )
 from database.session import Base
@@ -490,3 +495,97 @@ def test_executive_report_payload_contains_management_and_table_sections():
         assert len(report["executive_summary_table"]) >= 1
     finally:
         temp_dir.cleanup()
+
+
+def test_load_juntas_nuevo_alcance_filters_recomputes_and_exposes_quality_notes(monkeypatch, tmp_path):
+    fake_b44 = tmp_path / "juntas_raw.b44"
+    fake_b44.write_text("{}", encoding="ascii")
+
+    payload = {
+        "metadata": {
+            "hoja": "31-8-26",
+            "notas_calidad": [
+                {
+                    "fila_excel": 2,
+                    "columna_excel": 19,
+                    "nota": "(FALTA BLOQUE ACTUALIZADO FALTAN LAS JUTAS _1 ETC)",
+                }
+            ],
+        },
+        "registros": [
+            {
+                "sue": "SUE_78",
+                "total_juntas": 10,
+                "juntas_liberadas": 10,
+                "juntas_rechazadas": 0,
+                "juntas_pendientes": 0,
+                "pct_avance_inspeccion": 0.0,
+            },
+            {
+                "sue": "SUE_73",
+                "total_juntas": 8,
+                "juntas_liberadas": 0,
+                "juntas_rechazadas": 0,
+                "juntas_pendientes": 8,
+                "pct_avance_inspeccion": 99.0,
+            },
+            {
+                "sue": "SUE_02-11",
+                "total_juntas": 99,
+                "juntas_liberadas": 99,
+                "juntas_rechazadas": 0,
+                "juntas_pendientes": 0,
+                "pct_avance_inspeccion": 100.0,
+            },
+        ],
+    }
+
+    monkeypatch.setattr(dossier_service, "_JUNTAS_B44_PATH", fake_b44)
+    monkeypatch.setattr(dossier_service, "b44_load", lambda _path: payload)
+
+    result = load_juntas_nuevo_alcance()
+    sues = [row["sue"] for row in result["registros"]]
+
+    assert len(result["registros"]) == 2
+    assert "SUE_02-11" not in sues
+    assert set(sues) == {"SUE_78", "SUE_73"}
+    assert result["totales"] == {
+        "total_juntas": 18,
+        "liberadas": 10,
+        "rechazadas": 0,
+        "pendientes": 8,
+        "pct_avance_global": 55.56,
+    }
+    by_sue = {item["sue"]: item for item in result["registros"]}
+    assert by_sue["SUE_78"]["pct_avance_inspeccion"] == 100.0
+    assert by_sue["SUE_73"]["pct_avance_inspeccion"] == 0.0
+    assert result["notas_calidad"]
+    assert "FALTA BLOQUE ACTUALIZADO" in result["notas_calidad"][0]
+
+
+def test_load_juntas_nuevo_alcance_returns_empty_when_file_missing(monkeypatch, tmp_path):
+    missing_b44 = tmp_path / "missing.b44"
+    monkeypatch.setattr(dossier_service, "_JUNTAS_B44_PATH", missing_b44)
+
+    result = load_juntas_nuevo_alcance()
+
+    assert result["registros"] == []
+    assert result["totales"]["total_juntas"] == 0
+    assert result["notas_calidad"]
+    assert "Archivo no encontrado" in result["notas_calidad"][0]
+
+
+def test_api_nuevo_alcance_juntas_returns_service_payload(monkeypatch):
+    expected = {
+        "registros": [{"sue": "SUE_78", "total_juntas": 10, "juntas_liberadas": 10, "juntas_rechazadas": 0, "juntas_pendientes": 0, "pct_avance_inspeccion": 100.0}],
+        "metadata": {"hoja": "31-8-26"},
+        "notas_calidad": ["sample warning"],
+        "totales": {"total_juntas": 10, "liberadas": 10, "rechazadas": 0, "pendientes": 0, "pct_avance_global": 100.0},
+    }
+    monkeypatch.setattr(metrics_router, "load_juntas_nuevo_alcance", lambda: expected)
+
+    client = TestClient(app)
+    response = client.get("/api/nuevo-alcance/juntas")
+
+    assert response.status_code == 200
+    assert response.json() == expected

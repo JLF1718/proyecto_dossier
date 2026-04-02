@@ -216,3 +216,32 @@ Motivo: `"Reclasificación nuevo alcance PVRC24-021"`
 - **NEVER** use `textposition="auto"` or `constraintext="none"` in stacked bars
 - Always use `_NUEVO_ALCANCE_BLOCKS` as single source of truth
 - Any scope change must update the frozenset **AND** log to `status_change_log.csv`
+
+### Juntas Inspeccionadas — Nuevo Alcance (2026-04-01)
+
+#### Archivos nuevos incorporados
+- `data/processed/juntas_raw.b44` — datos de inspección de juntas codificados en Base44
+- `scripts/b44_utils.py` — utilidad de lectura/escritura del formato .b44 (`b44_load`, `b44_save`)
+
+#### Flujo de datos
+```
+juntas_raw.b44  →  b44_load()  →  load_juntas_nuevo_alcance()  →  GET /api/nuevo-alcance/juntas  →  Dash (pestaña Nuevo Alcance)
+```
+
+#### Reglas críticas
+- Filtrar **siempre** por `_NUEVO_ALCANCE_BLOCKS`. `SUE_02-11` aparece en el .b44 pero no pertenece al nuevo alcance — excluirlo silenciosamente.
+- Los campos `pct_avance_inspeccion` y `pct_pendiente_inspeccion` del .b44 están **invertidos en origen** (artifact de extracción). Nunca usarlos directamente. Recalcular siempre: `pct_avance = liberadas / total_juntas * 100`.
+- El archivo .b44 se lee **únicamente** con `b44_load` de `scripts/b44_utils.py`. No leer el `.json` compañero en producción.
+
+#### Totales de referencia (corte 2026-04-01, hoja 31-8-26)
+| Métrica | Valor |
+|---|---|
+| Total juntas (16 SUEs) | 3 917 |
+| Liberadas | 1 129 |
+| Rechazadas | 6 |
+| Pendientes | 2 782 |
+| % Avance global | 28.82 % |
+
+#### Tests
+- `tests/test_juntas_service.py` — 22 tests (filtrado, porcentajes, notas de calidad, archivo ausente, HTTP 200)
+- Suite completa post-integración: **59 passed, 0 failed**

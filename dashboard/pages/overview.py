@@ -409,7 +409,16 @@ def overview_page(lang: str = "en") -> dbc.Container:
                         [
                             dbc.Col(
                                 dbc.Card(
-                                    dbc.CardBody(dcc.Graph(id="new-contract-progress-graph", config=_GRAPH_CONFIG, style={"height": "400px"})),
+                                    dbc.CardBody(
+                                        [
+                                            dcc.Graph(id="new-contract-progress-graph", config=_GRAPH_CONFIG, style={"height": "400px"}),
+                                            html.Hr(className="my-3"),
+                                            html.H6("Control de Juntas Inspeccionadas", className="qa-section-title mt-1 mb-2"),
+                                            html.Div(id="juntas-kpi-row", className="mb-2 qa-kpi-zone"),
+                                            dcc.Graph(id="new-contract-juntas-graph", config=_GRAPH_CONFIG, style={"height": "420px"}),
+                                            html.Div(id="new-contract-juntas-quality-alert", className="mt-2"),
+                                        ]
+                                    ),
                                     className="qa-panel qa-chart-card h-100",
                                 ),
                                 xs=12,

@@ -16,19 +16,20 @@ from backend.services.dossier_service import (
     dossier_kpis_by_contractor,
     dossier_kpis_by_stage,
     global_dossier_kpis,
+    load_juntas_nuevo_alcance,
 )
 from modules.welding_control.api import weld_kpis
 from modules.concrete_control.api import concrete_kpis
 from modules.nc_management.api import nc_kpis
 
 router = APIRouter(
-    prefix="/api/metrics",
+    prefix="/api",
     tags=["Metrics"],
     dependencies=[Depends(verify_api_key)],
 )
 
 
-@router.get("", summary="Global KPI summary")
+@router.get("/metrics", summary="Global KPI summary")
 def global_metrics() -> Dict[str, Any]:
     """Return aggregated KPIs across all contractors.
 
@@ -61,7 +62,7 @@ def global_metrics() -> Dict[str, Any]:
     return result
 
 
-@router.get("/by-contractor", summary="KPIs broken down by contractor")
+@router.get("/metrics/by-contractor", summary="KPIs broken down by contractor")
 def metrics_by_contractor() -> Dict[str, Any]:
     try:
         return dossier_kpis_by_contractor()
@@ -69,7 +70,7 @@ def metrics_by_contractor() -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@router.get("/by-stage", summary="KPIs broken down by construction stage")
+@router.get("/metrics/by-stage", summary="KPIs broken down by construction stage")
 def metrics_by_stage(
     contratista: Optional[str] = Query(None, description="Limit to a single contractor"),
 ) -> Dict[str, Any]:
@@ -79,10 +80,20 @@ def metrics_by_stage(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@router.get("/{contractor}", summary="KPIs for a single contractor")
+@router.get("/metrics/{contractor}", summary="KPIs for a single contractor")
 def contractor_metrics(contractor: str) -> Dict[str, Any]:
     try:
         return contractor_dossier_kpis(contractor)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/nuevo-alcance/juntas", summary="Inspected joints progress for nuevo alcance")
+def nuevo_alcance_juntas() -> Dict[str, Any]:
+    try:
+        return load_juntas_nuevo_alcance()
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:

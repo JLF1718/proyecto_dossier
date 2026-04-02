@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import dash
 import dash_bootstrap_components as dbc
 import pandas as pd
+import requests
 from dash import Input, Output, clientside_callback, html
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -26,6 +28,7 @@ from backend.services.dossier_service import (
     build_historical_comparison_payload,
     build_weekly_management_payload,
     compute_kpis,
+    load_juntas_nuevo_alcance,
     list_weekly_snapshots,
 )
 from backend.services.piece_signal_service import load_piece_signal_payload
@@ -33,6 +36,7 @@ from backend.services.piece_signal_service import load_piece_signal_payload
 from dashboard.components.cards import (
     executive_report_pack,
     executive_summary_table,
+    juntas_kpi_row,
     physical_signal_cards,
     physical_signal_comparison_table,
     physical_signal_exceptions_table,
@@ -56,6 +60,7 @@ from dashboard.components.figures import (
     derive_stage_category,
     empty_figure,
     executive_summary_frame,
+    juntas_nuevo_alcance_figure,
     new_contract_progress_figure,
     new_contract_timeline_figure,
     snapshot_backlog_trend_figure,
@@ -73,6 +78,11 @@ from dashboard.layout import create_layout
 _PROCESSED_CSV_PATH = _PROJECT_ROOT / "data" / "processed" / "baysa_dossiers_clean.csv"
 _DASH_ASSETS_PATH = _PROJECT_ROOT / "assets"
 _PHYSICAL_SIGNAL_ENABLED = os.getenv("QA_ENABLE_PHYSICAL_SIGNAL", "1").strip().lower() in {"1", "true", "yes", "on"}
+_API_BASE = os.getenv("QA_API_BASE", "http://127.0.0.1:8000")
+_TIMEOUT = 10
+_CACHE_TTL = 30
+_JUNTAS_B44_PATH = _PROJECT_ROOT / "data" / "processed" / "juntas_raw.b44"
+_JUNTAS_CACHE: Dict[tuple[float], tuple[Dict[str, Any], float]] = {}
 
 _APPROVED = {"approved", "liberado", "aprobado", "aceptado"}
 _IN_REVIEW = {
@@ -93,6 +103,35 @@ _STAGE_FILTER_ORDER = [
     "General Information",
     "Protective Coatings",
 ]
+
+
+def _juntas_b44_mtime() -> float:
+    try:
+        return _JUNTAS_B44_PATH.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def _fetch_juntas_nuevo_alcance() -> Dict[str, Any]:
+    mtime = _juntas_b44_mtime()
+    key = (mtime,)
+    cached = _JUNTAS_CACHE.get(key)
+    if cached is not None:
+        payload, ts = cached
+        if time.monotonic() - ts < _CACHE_TTL:
+            return payload
+
+    try:
+        response = requests.get(f"{_API_BASE}/api/nuevo-alcance/juntas", timeout=_TIMEOUT)
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            payload = {}
+    except Exception:
+        payload = load_juntas_nuevo_alcance()
+
+    _JUNTAS_CACHE[key] = (payload, time.monotonic())
+    return payload
 
 
 def _load_local_dossier_csv() -> pd.DataFrame:
@@ -466,6 +505,9 @@ def update_scope_section_visibility(history_toggle: Optional[list[str]], scope_v
     Output("recommended-actions-block", "children"),
     Output("new-contract-progress-graph", "figure"),
     Output("new-contract-timeline-graph", "figure"),
+    Output("juntas-kpi-row", "children"),
+    Output("new-contract-juntas-graph", "figure"),
+    Output("new-contract-juntas-quality-alert", "children"),
     Input("language-store", "data"),
     Input("filter-contractor", "value"),
     Input("filter-discipline", "value"),
@@ -542,6 +584,9 @@ def update_dashboard(
         analysis_week=week,
         block_signal=_block_signal_df,
     )
+    juntas_payload: Dict[str, Any] = {}
+    if scope == "new_contract":
+        juntas_payload = _fetch_juntas_nuevo_alcance()
 
     contractor_options: list[dict[str, str]] = []
     if "contractor" in in_scope_df.columns:
@@ -664,6 +709,16 @@ def update_dashboard(
             t(lang, "figure.nc_timeline.title"),
             t(lang, "filter.scope.new_contract") + " — " + t(lang, "filter.scope.new_contract.hint"),
         ),
+        juntas_kpi_row(juntas_payload.get("totales", {})) if scope == "new_contract" else html.Div(),
+        juntas_nuevo_alcance_figure(juntas_payload) if scope == "new_contract" else empty_figure(
+            "Control de Juntas Inspeccionadas",
+            "Seleccione el alcance Nuevo Contrato para ver este control",
+        ),
+        dbc.Alert(
+            [html.Div(note) for note in (juntas_payload.get("notas_calidad", []) or [])],
+            color="warning",
+            className="mb-0",
+        ) if scope == "new_contract" and (juntas_payload.get("notas_calidad", []) or []) else html.Div(),
     )
 
 

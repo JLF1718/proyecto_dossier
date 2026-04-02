@@ -301,6 +301,54 @@ def quality_cards(kpis: Dict[str, Any], lang: str = "en") -> dbc.Row:
     return dbc.Row(cards)
 
 
+def juntas_kpi_row(totales: Dict[str, Any]) -> html.Div:
+    total_juntas = int(totales.get("total_juntas", 0) or 0)
+    liberadas = int(totales.get("liberadas", 0) or 0)
+    pendientes = int(totales.get("pendientes", 0) or 0)
+    pct_avance = float(totales.get("pct_avance_global", 0.0) or 0.0)
+
+    if pct_avance < 30.0:
+        avance_tone = "danger"
+    elif pct_avance <= 80.0:
+        avance_tone = "warning"
+    else:
+        avance_tone = "success"
+
+    return html.Div(
+        dbc.Row(
+            [
+                _kpi_card(
+                    "Juntas liberadas",
+                    f"{_fmt_int(liberadas)} / {_fmt_int(total_juntas)}",
+                    "Liberadas sobre total",
+                    "success",
+                    xs=12,
+                    md=4,
+                    lg=4,
+                ),
+                _kpi_card(
+                    "Juntas pendientes",
+                    _fmt_int(pendientes),
+                    "Pendientes por inspeccionar",
+                    "warning",
+                    xs=12,
+                    md=4,
+                    lg=4,
+                ),
+                _kpi_card(
+                    "% Avance inspección",
+                    f"{pct_avance:.1f}%",
+                    "Liberadas / total de juntas",
+                    avance_tone,
+                    xs=12,
+                    md=4,
+                    lg=4,
+                ),
+            ]
+        )
+    )
+
+
 def weekly_management_cards(payload: Dict[str, Any], lang: str = "en") -> html.Div:
     delta = payload.get("delta_kpis", {})
     analysis_week = delta.get("analysis_week")

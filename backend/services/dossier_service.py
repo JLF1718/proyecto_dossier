@@ -36,6 +36,7 @@ from sqlalchemy import select
 from backend.config import get_settings
 from database.models import WeeklySnapshot
 from database.session import SessionLocal, init_db
+from scripts.b44_utils import b44_load
 
 log = logging.getLogger(__name__)
 
@@ -84,10 +85,108 @@ _NUEVO_ALCANCE_BLOCKS: frozenset[str] = frozenset({
     "SUE_91", "SUE_94", "SUE_95", "SUE_96",
 })
 
+_JUNTAS_B44_PATH = Path("data/processed/juntas_raw.b44")
+
 
 def _processed_baysa_path() -> Path:
     settings = get_settings()
     return settings.data_dir / "processed" / "baysa_dossiers_clean.csv"
+
+
+def load_juntas_nuevo_alcance() -> Dict[str, Any]:
+    """Load and aggregate inspected-joints progress for the 16 nuevo-alcance blocks."""
+    def _to_int(value: object) -> int:
+        numeric = pd.to_numeric(value, errors="coerce")
+        return 0 if pd.isna(numeric) else int(numeric)
+
+    if not _JUNTAS_B44_PATH.exists():
+        return {
+            "registros": [],
+            "metadata": {},
+            "notas_calidad": [f"Archivo no encontrado: {_JUNTAS_B44_PATH}"],
+            "totales": {
+                "total_juntas": 0,
+                "liberadas": 0,
+                "rechazadas": 0,
+                "pendientes": 0,
+                "pct_avance_global": 0.0,
+            },
+        }
+
+    payload = b44_load(_JUNTAS_B44_PATH)
+    metadata = payload.get("metadata") if isinstance(payload, dict) else {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+
+    raw_notes = metadata.get("notas_calidad", [])
+    notas_calidad: list[str] = []
+    if isinstance(raw_notes, list):
+        for item in raw_notes:
+            if isinstance(item, dict):
+                note = str(item.get("nota", "")).strip()
+                fila = item.get("fila_excel")
+                col = item.get("columna_excel")
+                prefix = []
+                if fila is not None:
+                    prefix.append(f"fila {fila}")
+                if col is not None:
+                    prefix.append(f"col {col}")
+                if note:
+                    notas_calidad.append(f"({' / '.join(prefix)}) {note}" if prefix else note)
+            elif item:
+                notas_calidad.append(str(item).strip())
+
+    registros = payload.get("registros", []) if isinstance(payload, dict) else []
+    filtered: list[Dict[str, Any]] = []
+    for row in registros if isinstance(registros, list) else []:
+        if not isinstance(row, dict):
+            continue
+        sue = str(row.get("sue", "")).strip().upper()
+        if sue not in _NUEVO_ALCANCE_BLOCKS:
+            continue
+
+        total_juntas = _to_int(row.get("total_juntas"))
+        liberadas = _to_int(row.get("juntas_liberadas"))
+        rechazadas = _to_int(row.get("juntas_rechazadas"))
+        pendientes_raw = _to_int(row.get("juntas_pendientes"))
+        pendientes = pendientes_raw if pendientes_raw > 0 else max(total_juntas - liberadas - rechazadas, 0)
+        inspeccionadas = liberadas + rechazadas
+        pct_avance = round((liberadas / total_juntas) * 100.0, 2) if total_juntas > 0 else 0.0
+        pct_pendiente = round((pendientes / total_juntas) * 100.0, 2) if total_juntas > 0 else 0.0
+
+        enriched = dict(row)
+        enriched.update(
+            {
+                "sue": sue,
+                "total_juntas": total_juntas,
+                "juntas_liberadas": liberadas,
+                "juntas_rechazadas": rechazadas,
+                "juntas_pendientes": pendientes,
+                "juntas_inspeccionadas": inspeccionadas,
+                "pct_avance_inspeccion": pct_avance,
+                "pct_pendiente_inspeccion": pct_pendiente,
+            }
+        )
+        filtered.append(enriched)
+
+    total_juntas = int(sum(int(item.get("total_juntas", 0) or 0) for item in filtered))
+    liberadas = int(sum(int(item.get("juntas_liberadas", 0) or 0) for item in filtered))
+    rechazadas = int(sum(int(item.get("juntas_rechazadas", 0) or 0) for item in filtered))
+    pendientes = int(sum(int(item.get("juntas_pendientes", 0) or 0) for item in filtered))
+    pct_avance_global = round((liberadas / total_juntas) * 100.0, 2) if total_juntas > 0 else 0.0
+
+    return {
+        "registros": filtered,
+        "metadata": metadata,
+        "notas_calidad": notas_calidad,
+        "totales": {
+            "total_juntas": total_juntas,
+            "liberadas": liberadas,
+            "rechazadas": rechazadas,
+            "pendientes": pendientes,
+            "pct_avance_global": pct_avance_global,
+        },
+    }
 
 
 def _normalise_status(value: object) -> Optional[str]:

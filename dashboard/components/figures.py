@@ -16,6 +16,8 @@ _STATUS_COLORS: Dict[str, str] = {
     "approved": "#2e8540",
     "pending": "#d99000",
     "in_review": "#2d6fb7",
+    "rejected": "#E45756",
+    "pending_muted": "#ADB5BD",
 }
 
 _STAGE_ORDER = [
@@ -785,6 +787,116 @@ def snapshot_released_weight_trend_figure(payload: Dict[str, Any], lang: str = "
         color="#0f6cbd",
         lang=lang,
     )
+
+
+def juntas_nuevo_alcance_figure(juntas_data: Dict[str, Any]) -> go.Figure:
+    registros = juntas_data.get("registros", []) if isinstance(juntas_data, dict) else []
+    if not registros:
+        return empty_figure(
+            "Control de Juntas Inspeccionadas",
+            "Sin datos de juntas para el alcance seleccionado",
+        )
+
+    frame = pd.DataFrame(registros).copy()
+    if frame.empty:
+        return empty_figure(
+            "Control de Juntas Inspeccionadas",
+            "Sin datos de juntas para el alcance seleccionado",
+        )
+
+    frame["sue"] = frame.get("sue", pd.Series(index=frame.index, dtype="object")).astype(str)
+    frame["total_juntas"] = pd.to_numeric(frame.get("total_juntas", 0), errors="coerce").fillna(0).astype(int)
+    frame["juntas_liberadas"] = pd.to_numeric(frame.get("juntas_liberadas", 0), errors="coerce").fillna(0).astype(int)
+    frame["juntas_rechazadas"] = pd.to_numeric(frame.get("juntas_rechazadas", 0), errors="coerce").fillna(0).astype(int)
+    frame["juntas_pendientes"] = pd.to_numeric(frame.get("juntas_pendientes", 0), errors="coerce").fillna(0).astype(int)
+    frame["pct_avance"] = np.where(
+        frame["total_juntas"] > 0,
+        (frame["juntas_liberadas"] / frame["total_juntas"]) * 100.0,
+        0.0,
+    )
+
+    frame = frame.sort_values(["pct_avance", "sue"], ascending=[False, True]).reset_index(drop=True)
+
+    y = frame["sue"].tolist()
+    custom = np.column_stack(
+        [
+            frame["sue"],
+            frame["juntas_liberadas"],
+            frame["juntas_rechazadas"],
+            frame["juntas_pendientes"],
+            frame["pct_avance"].round(1),
+        ]
+    )
+    hover = (
+        "<b>%{customdata[0]}</b><br>"
+        "Liberadas: %{customdata[1]}<br>"
+        "Rechazadas: %{customdata[2]}<br>"
+        "Pendientes: %{customdata[3]}<br>"
+        "% avance: %{customdata[4]:.1f}%<extra></extra>"
+    )
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            name="Liberadas",
+            y=y,
+            x=frame["juntas_liberadas"],
+            orientation="h",
+            marker_color=_STATUS_COLORS["approved"],
+            customdata=custom,
+            hovertemplate=hover,
+            text=frame["juntas_liberadas"].where(frame["juntas_liberadas"] > 0, 0).astype(str).replace("0", ""),
+            textposition="inside",
+            insidetextanchor="middle",
+            constraintext="both",
+            cliponaxis=True,
+        )
+    )
+    fig.add_trace(
+        go.Bar(
+            name="Rechazadas",
+            y=y,
+            x=frame["juntas_rechazadas"],
+            orientation="h",
+            marker_color=_STATUS_COLORS.get("rejected", "#E45756"),
+            customdata=custom,
+            hovertemplate=hover,
+            text=frame["juntas_rechazadas"].where(frame["juntas_rechazadas"] > 0, 0).astype(str).replace("0", ""),
+            textposition="inside",
+            insidetextanchor="middle",
+            constraintext="both",
+            cliponaxis=True,
+        )
+    )
+    fig.add_trace(
+        go.Bar(
+            name="Pendientes",
+            y=y,
+            x=frame["juntas_pendientes"],
+            orientation="h",
+            marker_color=_STATUS_COLORS.get("pending_muted", _STATUS_COLORS.get("pending", "#ADB5BD")),
+            customdata=custom,
+            hovertemplate=hover,
+            text=frame["juntas_pendientes"].where(frame["juntas_pendientes"] > 0, 0).astype(str).replace("0", ""),
+            textposition="inside",
+            insidetextanchor="middle",
+            constraintext="both",
+            cliponaxis=True,
+        )
+    )
+
+    fig.update_layout(
+        template="plotly_white",
+        barmode="stack",
+        title={"text": "Control de Juntas Inspeccionadas", "x": 0.01, "y": 0.97, "yanchor": "top"},
+        xaxis_title="Juntas",
+        yaxis={"title": "Bloque SUE", "autorange": "reversed"},
+        margin={"l": 16, "r": 16, "t": 72, "b": 30},
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "left", "x": 0.0},
+        uniformtext_mode="hide",
+        uniformtext_minsize=10,
+    )
+    return fig
 
 
 # ── New Contract milestone figures ───────────────────────────────────────────
